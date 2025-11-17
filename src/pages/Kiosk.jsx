@@ -1,13 +1,16 @@
-
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Star, CheckCircle } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Phone, Star, CheckCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createPageUrl } from "@/utils";
 import { useBdsSubscription } from "@/components/utils/bdsSync";
+import PrintTicket from "../components/queue/PrintTicket";
 import {
   Dialog,
   DialogContent,
@@ -19,7 +22,7 @@ import {
 export default function KioskPage() {
   const navigate = useNavigate();
   const urlParams = new URLSearchParams(window.location.search);
-  const branch_id = urlParams.get('branch_id'); // כ-string
+  const branch_id = urlParams.get('branch_id');
   const queue_id = urlParams.get('queue_id');
   
   const [activeDepartments, setActiveDepartments] = useState([]);
@@ -27,46 +30,41 @@ export default function KioskPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [newTicket, setNewTicket] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // NEW: dynamic branches list
   const [branches, setBranches] = useState([]);
-  
-  // Removed: showChoiceButtons as per outline changes
   const [showClubModal, setShowClubModal] = useState(false);
   const [showSmsConfirmation, setShowSmsConfirmation] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Memoize loadDepartments to ensure it's stable across renders
   const loadDepartments = useCallback(async () => {
     if (!branch_id) {
       setLoading(false);
       return;
     }
     
-    console.log(`[Kiosk] Loading departments for branch_id: ${branch_id} (type: ${typeof branch_id})`);
-    
+    const timeout = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout')), 3000)
+    );
+
     try {
-      // טען את כל ה-BranchDepartmentSettings
-      const allDepts = await base44.entities.BranchDepartmentSetting.list();
-      console.log(`[Kiosk] All BranchDepartmentSettings:`, allDepts);
+      const allDepts = await Promise.race([
+        base44.entities.BranchDepartmentSetting.list(),
+        timeout
+      ]);
       
-      // סנן לפי branch_id (string) ו-is_active
-      const filteredDepts = allDepts.filter(d => {
-        const branchIdMatch = String(d.branch_id) === String(branch_id);
-        const isActiveMatch = d.is_active === true;
-        const matches = branchIdMatch && isActiveMatch;
-        console.log(`[Kiosk] Dept "${d.department}": branch_id="${d.branch_id}" (type: ${typeof d.branch_id}) vs "${branch_id}", match=${branchIdMatch}, is_active=${d.is_active}, final=${matches}`);
-        return matches;
-      });
+      const filteredDepts = allDepts.filter(d => 
+        String(d.branch_id) === String(branch_id) && d.is_active === true
+      );
       
-      console.log(`[Kiosk] Filtered to ${filteredDepts.length} active departments:`, filteredDepts);
       setActiveDepartments(filteredDepts);
+      setError(null);
     } catch (error) {
       console.error('[Kiosk] Error loading departments:', error);
+      setError('שגיאה בטעינת הנתונים');
       setActiveDepartments([]);
     }
     
     setLoading(false);
-  }, [branch_id]); // Dependency array for useCallback
+  }, [branch_id]);
 
   useEffect(() => {
     loadDepartments();
@@ -75,38 +73,34 @@ export default function KioskPage() {
       const interval = setInterval(loadDepartments, 10000);
       return () => clearInterval(interval);
     }
-  }, [branch_id, loadDepartments]); // Added loadDepartments to dependencies, as it is now a useCallback
+  }, [branch_id, loadDepartments]);
 
-  // NEW: load branches dynamically
   const loadBranches = useCallback(async () => {
     try {
-      setLoading(true); // Indicate loading while fetching branches
+      setLoading(true);
       const list = await base44.entities.Branch.list();
       setBranches(list);
     } catch (e) {
       console.error("[Kiosk] Error loading branches:", e);
       setBranches([]);
     } finally {
-      setLoading(false); // End loading regardless of success/failure
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    // Only load branches if branch_id is not set (i.e., we are on the branch selection screen)
     if (!branch_id) {
       loadBranches();
     }
   }, [branch_id, loadBranches]);
 
-  // Live sync with Admin toggles (top-level hook)
   const branchIdStr = branch_id ? String(branch_id) : null;
-  // Memoize the callback passed to useBdsSubscription
   const handleBdsSync = useCallback(({ scope, branchId }) => {
     if (scope === "all" || (branchIdStr && String(branchId) === branchIdStr)) {
       loadDepartments();
-      loadBranches(); // also refresh branches list
+      loadBranches();
     }
-  }, [branchIdStr, loadDepartments, loadBranches]); // Dependencies for this callback
+  }, [branchIdStr, loadDepartments, loadBranches]);
 
   useBdsSubscription(handleBdsSync);
 
@@ -129,7 +123,6 @@ export default function KioskPage() {
     }
   }, [queue_id, loadQueue]);
 
-  // הדפסה אוטומטית של הכרטיס
   useEffect(() => {
     if (!newTicket || !queue) return;
 
@@ -216,15 +209,12 @@ export default function KioskPage() {
       };
     };
 
-    // המתן קצר לפני ההדפסה כדי לתת למסך להציג את הכרטיס
     const timer = setTimeout(() => {
       printTicket();
     }, 500);
 
     return () => clearTimeout(timer);
   }, [newTicket, queue]);
-
-  // Removed handleGetNumberClick as per outline changes
 
   const speakHebrewNumber = async (seq) => {
     if (!('speechSynthesis' in window)) return;
@@ -291,7 +281,6 @@ export default function KioskPage() {
     const allQueues = await base44.entities.Queue.list();
     let q = allQueues.find(qq => String(qq.branch_id) === String(branchId) && qq.name === deptName);
     if (q) return q;
-    // Create if missing (no reliance on is_active)
     return await base44.entities.Queue.create({
       branch_id: String(branchId),
       name: deptName,
@@ -314,7 +303,7 @@ export default function KioskPage() {
         seq: newSeq,
         state: "waiting",
         source: "kiosk",
-        customer_phone: null, // As per new logic, no phone for regular ticket
+        customer_phone: null,
         join_club: false
       });
 
@@ -327,7 +316,6 @@ export default function KioskPage() {
       await speakHebrewNumber(newSeq);
 
       setNewTicket({ ...ticket, queue: currentQueue });
-      // Removed setShowChoiceButtons(false); as per outline changes
       
       setTimeout(() => {
         setNewTicket(null);
@@ -345,7 +333,7 @@ export default function KioskPage() {
 
   const createTicketWithSms = async () => {
     setIsCreating(true);
-    setShowClubModal(false); // Close the modal immediately
+    setShowClubModal(false);
     
     try {
       const currentQueue = await base44.entities.Queue.get(queue_id);
@@ -358,7 +346,7 @@ export default function KioskPage() {
         seq: newSeq,
         state: "waiting",
         source: "kiosk",
-        customer_phone: null, // לא שומרים את המספר - as per outline
+        customer_phone: null,
         join_club: true
       });
 
@@ -368,26 +356,18 @@ export default function KioskPage() {
         actor_role: "customer"
       });
 
-      // TODO: כאן תוסיף את שליחת ה-SMS בעתיד
-      // await base44.integrations.Core.SendEmail({
-      //   to: "customer_phone@sms-gateway.com",
-      //   subject: "הרשמה למועדון שוק העיר",
-      //   body: "ברוך הבא למועדון! לחץ כאן להשלמת ההרשמה: [קישור]"
-      // });
-
       await speakHebrewNumber(newSeq);
 
       setNewTicket({ ...ticket, queue: currentQueue });
-      // Removed setShowChoiceButtons(false); as per outline changes
-      setShowSmsConfirmation(true); // Show SMS confirmation message
+      setShowSmsConfirmation(true);
       
       setTimeout(() => {
         setShowSmsConfirmation(false);
-      }, 5000); // Hide SMS confirmation after 5 seconds
+      }, 5000);
       
       setTimeout(() => {
         setNewTicket(null);
-      }, 15000); // Clear ticket after 15 seconds
+      }, 15000);
     } catch (error) {
       console.error("Error creating ticket:", error);
       alert("שגיאה ביצירת כרטיס. אנא נסה שוב.");
@@ -413,6 +393,21 @@ export default function KioskPage() {
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 mx-auto mb-4" style={{ borderColor: '#41B649' }}></div>
           <p className="text-xl" style={{ color: '#111111' }}>טוען...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#E6F9EA' }}>
+        <Card className="bg-white shadow-xl max-w-md" style={{ borderColor: '#E52521', borderWidth: '2px' }}>
+          <CardContent className="p-12 text-center">
+            <p className="text-2xl font-bold mb-4" style={{ color: '#E52521' }}>{error}</p>
+            <Button onClick={() => window.location.reload()} className="text-white" style={{ backgroundColor: '#41B649' }}>
+              נסה שוב
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -566,11 +561,14 @@ export default function KioskPage() {
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BD1F1C'}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E52521'}
                 >
-                  <img 
-                    src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68dbe1252279022b9e191013/8866f21c5_SHuk_LOGO_HAYIR.png"
-                    alt="שוק העיר"
-                    className="h-24 w-auto"
-                  />
+                  <div className="bg-white rounded-full p-3 shadow-lg">
+                    <img 
+                      src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68dbe1252279022b9e191013/8866f21c5_SHuk_LOGO_HAYIR.png"
+                      alt="שוק העיר"
+                      className="h-20 w-auto"
+                      style={{ mixBlendMode: 'normal', opacity: 1 }}
+                    />
+                  </div>
                   {isCreating ? "יוצר..." : "קבלת מספר"}
                 </Button>
 
@@ -582,11 +580,14 @@ export default function KioskPage() {
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1F5F25'}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#41B649'}
                 >
-                  <img 
-                    src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68dbe1252279022b9e191013/8866f21c5_SHuk_LOGO_HAYIR.png"
-                    alt="שוק העיר"
-                    className="h-24 w-auto"
-                  />
+                  <div className="bg-white rounded-full p-3 shadow-lg">
+                    <img 
+                      src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68dbe1252279022b9e191013/8866f21c5_SHuk_LOGO_HAYIR.png"
+                      alt="שוק העיר"
+                      className="h-20 w-auto"
+                      style={{ mixBlendMode: 'normal', opacity: 1 }}
+                    />
+                  </div>
                   קבלת מספר ו-SMS
                 </Button>
               </motion.div>
@@ -630,7 +631,6 @@ export default function KioskPage() {
         </div>
       </div>
 
-      {/* Dialog להרשמה למועדון */}
       <Dialog open={showClubModal} onOpenChange={setShowClubModal}>
         <DialogContent dir="rtl" className="bg-white max-w-2xl">
           <DialogHeader>
