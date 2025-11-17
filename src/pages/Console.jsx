@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
@@ -257,11 +258,6 @@ export default function ConsolePage() {
       return;
     }
 
-    if (!user) {
-      alert("שגיאה: משתמש לא מחובר");
-      return;
-    }
-
     try {
       await base44.entities.Ticket.update(nextTicket.id, {
         state: "in_service",
@@ -273,59 +269,47 @@ export default function ConsolePage() {
         ticket_id: nextTicket.id,
         event_type: "called",
         actor_role: "staff",
-        actor_email: user.email
+        actor_email: user?.email || "system"
       });
 
       await base44.entities.TicketEvent.create({
         ticket_id: nextTicket.id,
         event_type: "started",
         actor_role: "staff",
-        actor_email: user.email
+        actor_email: user?.email || "system"
       });
 
-      // Broadcast to Display screens
       broadcastTicketCall(nextTicket, queue.name);
-
       loadData();
       setError(null);
     } catch (e) {
       console.error("Error calling next ticket:", e);
-      setError('שגיאה בקריאת התור הבא');
+      alert("שגיאה בקריאת התור הבא");
     }
   };
 
   const recall = async () => {
     if (!currentTicket) return;
-    if (!user) {
-      alert("שגיאה: משתמש לא מחובר");
-      return;
-    }
 
     try {
       await base44.entities.TicketEvent.create({
         ticket_id: currentTicket.id,
         event_type: "recalled",
         actor_role: "staff",
-        actor_email: user.email
+        actor_email: user?.email || "system"
       });
 
-      // Broadcast to Display screens
       broadcastTicketCall(currentTicket, queue.name);
-
       alert(`כרטיס ${currentTicket.seq} נקרא שוב`);
       setError(null);
     } catch (e) {
       console.error("Error recalling ticket:", e);
-      setError('שגיאה בקריאה חוזרת');
+      alert("שגיאה בקריאה חוזרת");
     }
   };
 
   const finishService = async () => {
     if (!currentTicket) return;
-    if (!user) {
-      alert("שגיאה: משתמש לא מחובר");
-      return;
-    }
 
     try {
       const finishedAt = new Date();
@@ -345,7 +329,7 @@ export default function ConsolePage() {
         ticket_id: currentTicket.id,
         event_type: "finished",
         actor_role: "staff",
-        actor_email: user.email
+        actor_email: user?.email || "system"
       });
 
       await loadData();
@@ -358,16 +342,12 @@ export default function ConsolePage() {
       }
     } catch (e) {
       console.error("Error finishing service:", e);
-      setError('שגיאה בסיום שירות');
+      alert("שגיאה בסיום שירות");
     }
   };
 
   const skipTicket = async () => {
     if (!currentTicket) return;
-    if (!user) {
-      alert("שגיאה: משתמש לא מחובר");
-      return;
-    }
 
     try {
       await base44.entities.Ticket.update(currentTicket.id, {
@@ -378,23 +358,19 @@ export default function ConsolePage() {
         ticket_id: currentTicket.id,
         event_type: "skipped",
         actor_role: "staff",
-        actor_email: user.email
+        actor_email: user?.email || "system"
       });
 
       loadData();
       setError(null);
     } catch (e) {
       console.error("Error skipping ticket:", e);
-      setError('שגיאה בדילוג');
+      alert("שגיאה בדילוג");
     }
   };
 
   const customerLeft = async () => {
     if (!currentTicket) return;
-    if (!user) {
-      alert("שגיאה: משתמש לא מחובר");
-      return;
-    }
 
     try {
       await base44.entities.Ticket.update(currentTicket.id, {
@@ -405,7 +381,7 @@ export default function ConsolePage() {
         ticket_id: currentTicket.id,
         event_type: "cancelled",
         actor_role: "staff",
-        actor_email: user.email,
+        actor_email: user?.email || "system",
         notes: "לקוח עזב"
       });
 
@@ -413,16 +389,12 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error handling customer left:", e);
-      setError('שגיאה בביטול');
+      alert("שגיאה בביטול");
     }
   };
 
   const requeueTicket = async () => {
     if (!currentTicket) return;
-    if (!user) {
-      alert("שגיאה: משתמש לא מחובר");
-      return;
-    }
 
     try {
       await base44.entities.Ticket.update(currentTicket.id, {
@@ -435,7 +407,7 @@ export default function ConsolePage() {
         ticket_id: currentTicket.id,
         event_type: "transferred",
         actor_role: "staff",
-        actor_email: user.email,
+        actor_email: user?.email || "system",
         notes: "הוחזר לתור"
       });
 
@@ -443,16 +415,12 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error requeueing ticket:", e);
-      setError('שגיאה בהחזרה');
+      alert("שגיאה בהחזרה");
     }
   };
 
   const transferTicket = async () => {
     if (!currentTicket || !targetDepartmentName) return;
-    if (!user) {
-      alert("שגיאה: משתמש לא מחובר");
-      return;
-    }
 
     const filterBranchId = branch_id || user?.branch_id;
 
@@ -488,7 +456,7 @@ export default function ConsolePage() {
         ticket_id: currentTicket.id,
         event_type: "transferred",
         actor_role: "staff",
-        actor_email: user.email,
+        actor_email: user?.email || "system",
         notes: `הועבר לתור: ${targetQueueEntity.name}`
       });
 
@@ -498,7 +466,7 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error transferring ticket:", e);
-      setError('שגיאה בהעברה');
+      alert("שגיאה בהעברה");
     }
   };
 
@@ -542,10 +510,6 @@ export default function ConsolePage() {
       alert("ניתן לקדם רק כרטיסים ממתינים");
       return;
     }
-    if (!user) {
-      alert("שגיאה: משתמש לא מחובר");
-      return;
-    }
 
     try {
       const allWaitingTickets = await base44.entities.Ticket.filter({ queue_id, state: "waiting" });
@@ -565,7 +529,7 @@ export default function ConsolePage() {
         ticket_id: foundTicket.id,
         event_type: "transferred",
         actor_role: "staff",
-        actor_email: user.email,
+        actor_email: user?.email || "system",
         notes: "קודם לתחילת התור"
       });
 
@@ -706,7 +670,7 @@ export default function ConsolePage() {
             <Card className="bg-white shadow-xl" style={{ borderColor: '#41B649', borderWidth: '2px' }}>
               <CardContent className="p-12 text-center">
                 <p className="text-2xl font-bold mb-4" style={{ color: '#1F5F25' }}>אין מחלקות פעילות כרגע</p>
-                <p className="text-gray-600 mb-4">אנא פנה למנהל המערכת</p>
+                <p className="text-gray-600">אנא פנה למנהל המערכת</p>
               </CardContent>
             </Card>
           )}

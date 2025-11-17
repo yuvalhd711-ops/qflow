@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
+
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export default function KioskPage() {
   const [showClubModal, setShowClubModal] = useState(false);
   const [showSmsConfirmation, setShowSmsConfirmation] = useState(false);
   const [error, setError] = useState(null);
+  const printIframeRef = useRef(null);
 
   const loadDepartments = useCallback(async () => {
     if (!branch_id) {
@@ -112,7 +114,7 @@ export default function KioskPage() {
     }
   }, [queue_id, loadQueue]);
 
-  // Auto-print using hidden iframe
+  // Auto-print using hidden iframe - NO about:blank
   useEffect(() => {
     if (!newTicket || !queue) return;
 
@@ -124,7 +126,7 @@ export default function KioskPage() {
         <html dir="rtl">
         <head>
           <meta charset="utf-8">
-          <title>כרטיס תור - ${ticketNumber}</title>
+          <title>כרטיס תור</title>
           <style>
             @media print {
               @page { margin: 0; size: 80mm auto; }
@@ -172,7 +174,7 @@ export default function KioskPage() {
             }
           </style>
         </head>
-        <body>
+        <body onload="window.print();">
           <div class="header">${queue.name}</div>
           <div class="ticket-code">${ticketNumber}</div>
           <div class="info">מספר תור שלך</div>
@@ -186,31 +188,46 @@ export default function KioskPage() {
         </html>
       `;
 
-      // Create hidden iframe
+      // Remove old iframe if exists
+      if (printIframeRef.current) {
+        try {
+          document.body.removeChild(printIframeRef.current);
+        } catch (e) {
+          console.warn("Failed to remove old iframe:", e);
+        }
+      }
+
+      // Create completely hidden iframe
       const iframe = document.createElement('iframe');
-      iframe.style.position = 'absolute';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
+      iframe.style.position = 'fixed';
+      iframe.style.top = '-10000px';
+      iframe.style.left = '-10000px';
+      iframe.style.width = '1px';
+      iframe.style.height = '1px';
+      iframe.style.opacity = '0';
       iframe.style.border = 'none';
       document.body.appendChild(iframe);
+      printIframeRef.current = iframe;
 
       const iframeDoc = iframe.contentWindow.document;
       iframeDoc.open();
       iframeDoc.write(printContent);
       iframeDoc.close();
 
-      iframe.contentWindow.onload = () => {
-        iframe.contentWindow.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 1000);
-      };
+      // Cleanup after print
+      setTimeout(() => {
+        if (printIframeRef.current) {
+          try {
+            document.body.removeChild(printIframeRef.current);
+            printIframeRef.current = null;
+          } catch (e) {
+            console.warn("Failed to remove iframe after print:", e);
+          }
+        }
+      }, 2000);
     };
 
-    const timer = setTimeout(() => {
-      printTicket();
-    }, 500);
-
+    const timer = setTimeout(printTicket, 300);
     return () => clearTimeout(timer);
   }, [newTicket, queue]);
 
