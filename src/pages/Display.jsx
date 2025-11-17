@@ -1,24 +1,26 @@
-
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
-import { Card, CardContent } from "@/components/ui/card"; // Added CardContent
+import { Card, CardContent } from "@/components/ui/card";
 import { Users, Clock } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createPageUrl } from "@/utils";
 import { useBdsSubscription } from "@/components/utils/bdsSync";
+import { Button } from "@/components/ui/button";
 
 export default function DisplayPage() {
   const navigate = useNavigate();
   const urlParams = new URLSearchParams(window.location.search);
   const branch_id = urlParams.get("branch_id");
+  const shouldAnnounce = urlParams.get("announce") === "1";
 
-  const [branches, setBranches] = useState([]); // NEW state for dynamic branches
+  const [branches, setBranches] = useState([]);
   const [activeDepartments, setActiveDepartments] = useState([]);
   const [branchName, setBranchName] = useState("");
   const [queuesData, setQueuesData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [announcedTicketSeqs, setAnnouncedTicketSeqs] = useState({});
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [showAudioPrompt, setShowAudioPrompt] = useState(false);
   const isInitialLoad = useRef(true);
 
   const loadBranches = useCallback(async () => {
@@ -37,6 +39,7 @@ export default function DisplayPage() {
 
   const speakHebrewTicket = useCallback(async (ticketSeq, queueName) => {
     if (!("speechSynthesis" in window)) return;
+    if (!audioEnabled) return;
 
     const getVoicesWithRetry = () =>
       new Promise((resolve) => {
@@ -68,12 +71,12 @@ export default function DisplayPage() {
     const voices = await getVoicesWithRetry();
     const heVoice = pickHebrewVoice(voices);
 
-    const utteranceText = `לקוח מספר ${ticketSeq} נא לגשת ל${queueName}`;
+    const utteranceText = `מספר ${ticketSeq}, לגשת ל${queueName}`;
     const utterance = new SpeechSynthesisUtterance(utteranceText);
 
     utterance.lang = "he-IL";
     utterance.volume = 1;
-    utterance.rate = 0.95; // FIX: was 'utterate.rate'
+    utterance.rate = 0.9;
     utterance.pitch = 1;
     if (heVoice) utterance.voice = heVoice;
 
@@ -81,7 +84,27 @@ export default function DisplayPage() {
       ss.resume();
     } catch {}
     ss.speak(utterance);
-  }, []);
+  }, [audioEnabled]);
+
+  // Listen for ticket call broadcasts from Console
+  useEffect(() => {
+    if (!shouldAnnounce) return;
+
+    const onStorage = (e) => {
+      if (e.key === "ticket_call_event" && e.newValue) {
+        try {
+          const data = JSON.parse(e.newValue);
+          console.log("[Display] Received ticket call:", data);
+          speakHebrewTicket(data.ticketSeq, data.queueName);
+        } catch (err) {
+          console.error("[Display] Error parsing ticket call event:", err);
+        }
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [shouldAnnounce, speakHebrewTicket]);
 
   const loadAllQueuesData = useCallback(
     async (depts) => {
@@ -136,7 +159,7 @@ export default function DisplayPage() {
       setActiveDepartments(filteredDepts);
 
       if (branch_id) {
-        const found = branches.find((b) => String(b.id) === branchIdStr); // Use dynamic branches
+        const found = branches.find((b) => String(b.id) === branchIdStr);
         setBranchName(found?.name || "");
         await loadAllQueuesData(filteredDepts);
       }
@@ -146,24 +169,21 @@ export default function DisplayPage() {
     }
 
     setLoading(false);
-  }, [branch_id, branches, loadAllQueuesData]); // Added branches to dependency array
+    isInitialLoad.current = false;
+  }, [branch_id, branches, loadAllQueuesData]);
 
   useEffect(() => {
-    // Only load departments if branches data is available (for branchName lookup)
     if (branch_id && branches.length > 0) {
       loadDepartments();
     } else if (!branch_id) {
-      // If no branch_id, we are in the branch selection screen,
-      // we only need branches to be loaded, not departments.
       setLoading(false);
     }
   }, [branch_id, branches, loadDepartments]);
 
-
   const displayBranchIdStr = branch_id ? String(branch_id) : null;
   useBdsSubscription(({ scope, branchId }) => {
     if (scope === "all" || (displayBranchIdStr && String(branchId) === displayBranchIdStr)) {
-      loadBranches(); // Reload branches on relevant BDS events
+      loadBranches();
       loadDepartments();
     }
   });
@@ -172,58 +192,24 @@ export default function DisplayPage() {
     if (branch_id && activeDepartments.length > 0) {
       const interval = setInterval(() => {
         loadDepartments();
-      }, 15000);
+      }, 10000);
       return () => clearInterval(interval);
     }
   }, [branch_id, activeDepartments.length, loadDepartments]);
 
+  // Show audio prompt only if announce=1 and not yet enabled
   useEffect(() => {
-    if (!queuesData || queuesData.length === 0) return;
-
-    const newAnnouncedTicketSeqs = {};
-    // clone sets to avoid mutating state directly
-    for (const [qid, set] of Object.entries(announcedTicketSeqs)) {
-      newAnnouncedTicketSeqs[qid] = new Set([...set]);
+    if (shouldAnnounce && !audioEnabled && !isInitialLoad.current) {
+      setShowAudioPrompt(true);
     }
+  }, [shouldAnnounce, audioEnabled]);
 
-    let ticketsToAnnounce = [];
+  const enableAudio = () => {
+    setAudioEnabled(true);
+    setShowAudioPrompt(false);
+  };
 
-    queuesData.forEach(({ queue, currentTickets }) => {
-      if (!newAnnouncedTicketSeqs[queue.id]) {
-        newAnnouncedTicketSeqs[queue.id] = new Set();
-      }
-
-      const currentTicketSeqsForQueue = new Set(currentTickets.map((t) => t.seq));
-      const previouslyAnnouncedForQueue = newAnnouncedTicketSeqs[queue.id];
-
-      currentTickets.forEach((ticket) => {
-        if (!previouslyAnnouncedForQueue.has(ticket.seq)) {
-          if (!isInitialLoad.current) {
-            ticketsToAnnounce.push({ queueName: queue.name, ticketSeq: ticket.seq });
-          }
-          previouslyAnnouncedForQueue.add(ticket.seq);
-        }
-      });
-
-      // Clean up announced tickets that are no longer current
-      newAnnouncedTicketSeqs[queue.id] = new Set(
-        [...previouslyAnnouncedForQueue].filter((seq) => currentTicketSeqsForQueue.has(seq))
-      );
-    });
-
-    if (ticketsToAnnounce.length > 0) {
-      ticketsToAnnounce
-        .sort((a, b) => a.ticketSeq - b.ticketSeq)
-        .forEach(({ queueName, ticketSeq }) => {
-          speakHebrewTicket(ticketSeq, queueName);
-        });
-    }
-
-    setAnnouncedTicketSeqs(newAnnouncedTicketSeqs);
-    isInitialLoad.current = false;
-  }, [queuesData, speakHebrewTicket, announcedTicketSeqs]);
-
-  if (loading && branch_id) { // Only show loading spinner if a branch_id is specified
+  if (loading && branch_id) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#1F5F25" }}>
         <div className="text-center">
@@ -271,18 +257,12 @@ export default function DisplayPage() {
                 </Card>
               </motion.div>
             ))}
-            {branches.length > 0 && branches.filter(b => b.is_active).length === 0 && ( // Display message only if branches loaded but none are active
+            {branches.length > 0 && branches.filter(b => b.is_active).length === 0 && (
               <Card className="bg-white shadow-2xl col-span-full" style={{ borderColor: "#41B649", borderWidth: "2px" }}>
                 <div className="p-8 text-center">
                   <p className="text-gray-700">אין סניפים פעילים להצגה.</p>
                 </div>
               </Card>
-            )}
-            {loading && branches.length === 0 && ( // Show loading for branches if none are loaded yet
-              <div className="col-span-full text-center">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white mx-auto mb-4"></div>
-                <p className="text-xl text-white">טוען סניפים...</p>
-              </div>
             )}
           </div>
         </div>
@@ -292,6 +272,25 @@ export default function DisplayPage() {
 
   return (
     <div className="min-h-screen text-white p-6 flex flex-col" dir="rtl" style={{ backgroundColor: "#1F5F25" }}>
+      {showAudioPrompt && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="bg-white p-8 max-w-md">
+            <CardContent className="text-center space-y-4">
+              <h3 className="text-2xl font-bold" style={{ color: "#111111" }}>הפעלת קריאות קוליות</h3>
+              <p className="text-gray-600">מסך זה מוגדר לקריאת מספרי תורים בקול. האם להפעיל?</p>
+              <div className="flex gap-4 justify-center">
+                <Button onClick={() => setShowAudioPrompt(false)} variant="outline">
+                  לא עכשיו
+                </Button>
+                <Button onClick={enableAudio} style={{ backgroundColor: "#41B649", color: "white" }}>
+                  הפעל קול
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <div className="flex-1 flex flex-col max-w-7xl mx-auto w-full">
         <div className="text-center mb-6">
           <img
@@ -309,20 +308,16 @@ export default function DisplayPage() {
                 <p className="text-2xl font-bold mb-4" style={{ color: "#111111" }}>
                   אין תורים פעילים כרגע
                 </p>
-                <p className="text-gray-600 mb-2">אנא פנה למנהל המערכת</p>
-                <p className="text-sm text-gray-500">branch_id: {branch_id}</p>
-                <p className="text-sm text-gray-500">מחלקות פעילות: {activeDepartments.length}</p>
+                <p className="text-gray-600">אנא פנה למנהל המערכת</p>
               </div>
             </Card>
           )}
 
-          {/* תצוגה אופקית של כל המחלקות */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {queuesData.map(({ queue, currentTickets, nextTickets, waitingCount, avgServiceTime }) => (
               <div key={queue.id} className="flex flex-col">
                 <Card className="bg-white shadow-xl flex-1 flex flex-col" style={{ borderColor: '#41B649', borderWidth: '2px' }}>
                   <CardContent className="p-4 flex-1 flex flex-col">
-                    {/* כותרת המחלקה */}
                     <div className="text-center mb-3">
                       <h1 className="text-2xl font-bold" style={{ color: '#111111' }}>{queue.name}</h1>
                       <div className="flex items-center justify-center gap-4 text-sm mt-2" style={{ color: '#111111' }}>
@@ -337,7 +332,6 @@ export default function DisplayPage() {
                       </div>
                     </div>
 
-                    {/* נקראים כעת */}
                     <div className="mb-3">
                       <h3 className="text-lg font-bold text-center mb-2" style={{ color: '#111111' }}>נקראים כעת</h3>
                       <div className="space-y-2">
@@ -371,7 +365,6 @@ export default function DisplayPage() {
                       </div>
                     </div>
 
-                    {/* הבאים בתור */}
                     <div>
                       <h3 className="text-lg font-bold text-center mb-2" style={{ color: '#111111' }}>הבאים בתור</h3>
                       <div className="space-y-2">

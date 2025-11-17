@@ -2,15 +2,11 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Phone, Star, CheckCircle } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Star, CheckCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createPageUrl } from "@/utils";
 import { useBdsSubscription } from "@/components/utils/bdsSync";
-import PrintTicket from "../components/queue/PrintTicket";
 import {
   Dialog,
   DialogContent,
@@ -40,16 +36,9 @@ export default function KioskPage() {
       setLoading(false);
       return;
     }
-    
-    const timeout = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Timeout')), 3000)
-    );
 
     try {
-      const allDepts = await Promise.race([
-        base44.entities.BranchDepartmentSetting.list(),
-        timeout
-      ]);
+      const allDepts = await base44.entities.BranchDepartmentSetting.list();
       
       const filteredDepts = allDepts.filter(d => 
         String(d.branch_id) === String(branch_id) && d.is_active === true
@@ -123,12 +112,11 @@ export default function KioskPage() {
     }
   }, [queue_id, loadQueue]);
 
+  // Auto-print using hidden iframe
   useEffect(() => {
     if (!newTicket || !queue) return;
 
     const printTicket = () => {
-      const printWindow = window.open('', '_blank');
-      
       const ticketNumber = String(newTicket.seq).padStart(3, "0");
       
       const printContent = `
@@ -197,15 +185,25 @@ export default function KioskPage() {
         </body>
         </html>
       `;
-      
-      printWindow.document.write(printContent);
-      printWindow.document.close();
-      
-      printWindow.onload = () => {
-        printWindow.print();
-        printWindow.onafterprint = () => {
-          printWindow.close();
-        };
+
+      // Create hidden iframe
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+
+      const iframeDoc = iframe.contentWindow.document;
+      iframeDoc.open();
+      iframeDoc.write(printContent);
+      iframeDoc.close();
+
+      iframe.contentWindow.onload = () => {
+        iframe.contentWindow.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 1000);
       };
     };
 
@@ -215,67 +213,6 @@ export default function KioskPage() {
 
     return () => clearTimeout(timer);
   }, [newTicket, queue]);
-
-  const speakHebrewNumber = async (seq) => {
-    if (!('speechSynthesis' in window)) return;
-
-    const numberToHebrewWords = (num) => {
-      const ones = ["", "אחת", "שתיים", "שלוש", "ארבע", "חמש", "שש", "שבע", "שמונה", "תשע"];
-      const teens = ["עשר", "אחת עשרה", "שתים עשרה", "שלוש עשרה", "ארבעה עשרה", "חמש עשרה", "שש עשרה", "שבע עשרה", "שמונה עשרה", "תשע עשרה"];
-      const tens = ["", "", "עשרים", "שלושים", "ארבעים", "חמישים", "שישים", "שבעים", "שמונים", "תשעים"];
-      
-      if (num === 0) return "אפס";
-      if (num < 10) return ones[num];
-      if (num >= 10 && num < 20) return teens[num - 10];
-      if (num >= 20 && num < 100) {
-        const ten = Math.floor(num / 10);
-        const one = num % 10;
-        if (one === 0) return tens[ten];
-        return ones[one] + " ו" + tens[ten];
-      }
-      return num.toString();
-    };
-
-    const getVoicesWithRetry = () =>
-      new Promise((resolve) => {
-        const ss = window.speechSynthesis;
-        let tries = 12;
-        const tick = () => {
-          const list = ss.getVoices();
-          if (list && list.length) return resolve(list);
-          if (--tries <= 0) return resolve([]);
-          setTimeout(tick, 120);
-        };
-        tick();
-      });
-
-    const pickHebrewVoice = (voices) => {
-      return (
-        voices.find((v) => /carmit/i.test(v.name)) ||
-        voices.find((v) => (v.lang || "").toLowerCase().startsWith("he")) ||
-        null
-      );
-    };
-
-    const ss = window.speechSynthesis;
-    try { ss.cancel(); ss.resume(); } catch (e) {}
-
-    const voices = await getVoicesWithRetry();
-    const heVoice = pickHebrewVoice(voices);
-
-    const hebrewNumber = numberToHebrewWords(seq);
-    const utteranceText = `מספר ${hebrewNumber}`;
-    const utterance = new SpeechSynthesisUtterance(utteranceText);
-
-    utterance.lang = 'he-IL';
-    utterance.volume = 1;
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    if (heVoice) utterance.voice = heVoice;
-
-    try { ss.resume(); } catch (e) {}
-    ss.speak(utterance);
-  };
 
   const ensureQueue = async (branchId, deptName) => {
     const allQueues = await base44.entities.Queue.list();
@@ -312,8 +249,6 @@ export default function KioskPage() {
         event_type: "created",
         actor_role: "customer"
       });
-
-      await speakHebrewNumber(newSeq);
 
       setNewTicket({ ...ticket, queue: currentQueue });
       
@@ -355,8 +290,6 @@ export default function KioskPage() {
         event_type: "created",
         actor_role: "customer"
       });
-
-      await speakHebrewNumber(newSeq);
 
       setNewTicket({ ...ticket, queue: currentQueue });
       setShowSmsConfirmation(true);
@@ -505,12 +438,7 @@ export default function KioskPage() {
             <Card className="bg-white shadow-xl" style={{ borderColor: '#41B649', borderWidth: '2px' }}>
               <CardContent className="p-12 text-center">
                 <p className="text-2xl font-bold mb-4" style={{ color: '#111111' }}>אין מחלקות פעילות כרגע</p>
-                <p className="text-gray-600 mb-4">אנא פנה למנהל המערכת</p>
-                <div className="mt-6 p-4 bg-gray-50 rounded-lg text-right space-y-2">
-                  <p className="text-sm text-gray-600">מידע לדיבוג:</p>
-                  <p className="text-sm text-gray-500">branch_id: {branch_id}</p>
-                  <p className="text-sm text-gray-500">מחלקות שנמצאו: {activeDepartments.length}</p>
-                </div>
+                <p className="text-gray-600">אנא פנה למנהל המערכת</p>
               </CardContent>
             </Card>
           )}

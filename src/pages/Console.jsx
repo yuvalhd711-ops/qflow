@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
@@ -11,7 +10,6 @@ import {
   History
 } from "lucide-react";
 import { motion } from "framer-motion";
-import AudioNotification from "../components/queue/AudioNotification";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +29,19 @@ import { useBdsSubscription } from "@/components/utils/bdsSync";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 
+// Helper to broadcast ticket call event
+const broadcastTicketCall = (ticket, queueName) => {
+  try {
+    localStorage.setItem("ticket_call_event", JSON.stringify({
+      ts: Date.now(),
+      ticketSeq: ticket.seq,
+      queueName: queueName
+    }));
+  } catch (e) {
+    console.error("Error broadcasting ticket call:", e);
+  }
+};
+
 export default function ConsolePage() {
   const navigate = useNavigate();
   const urlParams = new URLSearchParams(window.location.search);
@@ -45,7 +56,6 @@ export default function ConsolePage() {
   const [transferDialog, setTransferDialog] = useState(false);
   const [targetDepartmentName, setTargetDepartmentName] = useState("");
   const [loading, setLoading] = useState(true);
-  const [playAudio, setPlayAudio] = useState(null);
   const [onBreak, setOnBreak] = useState(false);
   const [branches, setBranches] = useState([]);
   const [searchSeq, setSearchSeq] = useState("");
@@ -53,17 +63,16 @@ export default function ConsolePage() {
   const [searchMessage, setSearchMessage] = useState("");
   const [historyTickets, setHistoryTickets] = useState([]);
   const [historySearchSeq, setHistorySearchSeq] = useState("");
-  // NEW: Error state
   const [error, setError] = useState(null);
 
   const loadBranches = useCallback(async () => {
     try {
-      const list = await base44.entities.Branch.list(); // Removed Promise.race and timeout
+      const list = await base44.entities.Branch.list();
       setBranches(list);
-      setError(null); // Clear error on successful load
+      setError(null);
     } catch (error) {
       console.error("Error loading branches:", error);
-      setError(error.message || 'שגיאה בטעינת סניפים. אנא נסה שוב.'); // Generic error message
+      setError('שגיאה בטעינת סניפים');
       setBranches([]);
     }
   }, []);
@@ -72,12 +81,11 @@ export default function ConsolePage() {
     if (!queue_id) return;
 
     try {
-      const queueData = await base44.entities.Queue.get(queue_id); // Removed Promise.race and timeout
+      const queueData = await base44.entities.Queue.get(queue_id);
       setQueue(queueData);
-      setError(null); // Clear error on successful load
+      setError(null);
     } catch (error) {
       console.error("Queue not found:", error);
-      setError(error.message || 'שגיאה בטעינת התור. אנא נסה שוב.'); // Generic error message
       setQueue(null);
       const url = createPageUrl("Console") + (branch_id ? `?branch_id=${branch_id}` : '');
       navigate(url);
@@ -89,14 +97,13 @@ export default function ConsolePage() {
 
     try {
       const [ticketsResult, currentTicketsResult] = await Promise.allSettled([
-        base44.entities.Ticket.filter({ queue_id, state: "waiting" }, "seq"), // Removed Promise.race and timeout
-        base44.entities.Ticket.filter({ queue_id }) // Removed Promise.race and timeout
+        base44.entities.Ticket.filter({ queue_id, state: "waiting" }, "seq"),
+        base44.entities.Ticket.filter({ queue_id })
       ]);
 
       if (ticketsResult.status === 'fulfilled') {
         setWaitingTickets(ticketsResult.value);
       } else {
-        console.error("Error loading waiting tickets:", ticketsResult.reason);
         setWaitingTickets([]);
       }
 
@@ -113,15 +120,13 @@ export default function ConsolePage() {
         ).sort((a, b) => new Date(b.finished_at || b.updated_date) - new Date(a.finished_at || a.updated_date));
         setHistoryTickets(todayHistory);
       } else {
-        console.error("Error loading current/history tickets:", currentTicketsResult.reason);
         setCurrentTicket(null);
         setHistoryTickets([]);
       }
 
-      setError(null); // Clear error on successful data load
+      setError(null);
     } catch (error) {
       console.error("Error loading data:", error);
-      setError(error.message || 'שגיאה בטעינת נתוני התור. אנא נסה שוב.'); // Generic error message
       setWaitingTickets([]);
       setCurrentTicket(null);
       setHistoryTickets([]);
@@ -134,76 +139,57 @@ export default function ConsolePage() {
 
   useEffect(() => {
     const loadDepartments = async () => {
-      setLoading(true); // Ensure loading is true at the start of the effect
+      setLoading(true);
       try {
-        // If branch_id is in URL, use it directly as the primary filter.
         let effectiveBranchId = branch_id;
-
         let userData = null;
-        // Always try to load user in the background. This ensures `user` state is populated
-        // for use elsewhere (e.g., actor_email in events), regardless of how branch_id is determined.
+
         try {
-          userData = await base44.auth.me(); // Removed Promise.race and timeout
+          userData = await base44.auth.me();
           setUser(userData);
-          // If `effectiveBranchId` was not set by URL, use user's default branch.
           if (!effectiveBranchId && userData?.branch_id) {
             effectiveBranchId = userData.branch_id;
           }
         } catch (authError) {
           console.error('[Console] Error loading user data:', authError);
-          // If user loading fails AND we don't have a branch_id from the URL,
-          // then we cannot proceed to load departments.
           if (!effectiveBranchId) {
-            setError(authError.message || 'שגיאה בטעינת פרטי משתמש. אנא נסה שוב.');
+            setError('שגיאה בטעינת פרטי משתמש');
             setActiveDepartments([]);
             setLoading(false);
-            return; // Exit early if we can't determine a branch_id
+            return;
           }
-          // If `effectiveBranchId` *is* present (from URL), we can continue even if user auth fails.
-          // The `user` state will just remain null, or whatever its default is.
         }
 
         if (!effectiveBranchId) {
-          console.log('[Console] No effective branch_id available to load departments.');
-          setError('לא ניתן לטעון מחלקות ללא סניף מוגדר. אנא בחר סניף או פנה למנהל המערכת.'); // Generic error message
+          setError('לא ניתן לטעון מחלקות ללא סניף מוגדר');
           setActiveDepartments([]);
           setLoading(false);
           return;
         }
 
-        console.log(`[Console] Loading departments for branch_id: ${effectiveBranchId}`);
+        const allDepts = await base44.entities.BranchDepartmentSetting.list();
+        const filteredDepts = allDepts.filter(d => 
+          String(d.branch_id) === String(effectiveBranchId) && d.is_active === true
+        );
 
-        const allDepts = await base44.entities.BranchDepartmentSetting.list(); // Removed Promise.race and timeout
-        console.log(`[Console] All BranchDepartmentSettings:`, allDepts);
-
-        const filteredDepts = allDepts.filter(d => {
-          const match = String(d.branch_id) === String(effectiveBranchId) && d.is_active === true;
-          console.log(`[Console] Dept "${d.department}" (ID:${d.id}): branch_id=${d.branch_id} (target: ${effectiveBranchId}), isActive=${d.is_active}. Match? ${match}`);
-          return match;
-        });
-
-        console.log(`[Console] Filtered active departments for branch ${effectiveBranchId}:`, filteredDepts);
         setActiveDepartments(filteredDepts);
-        setError(null); // Clear error on successful load
+        setError(null);
       } catch (error) {
         console.error('[Console] Error loading departments:', error);
         setActiveDepartments([]);
-        setError(error.message || 'שגיאה כללית בטעינת מחלקות. אנא נסה שוב.'); // Generic error message
+        setError('שגיאה בטעינת מחלקות');
       } finally {
-        setLoading(false); // Ensure loading is set to false in all paths
+        setLoading(false);
       }
     };
 
     loadDepartments();
 
-    // Only set interval if branch_id is present, implying a branch has been selected.
-    // If branch_id is null, it means the user is on the branch selection screen,
-    // and we don't need to poll for department changes.
     if (branch_id) {
       const interval = setInterval(loadDepartments, 10000);
       return () => clearInterval(interval);
     }
-  }, [branch_id]); // Dependency only on branch_id from URL.
+  }, [branch_id]);
 
   useEffect(() => {
     if (queue_id) {
@@ -214,22 +200,20 @@ export default function ConsolePage() {
     }
   }, [queue_id, loadQueue, loadData]);
 
-  // Live sync with Admin toggles (top-level hook, not inside useEffect)
   const filterBranchId = branch_id || user?.branch_id;
   const consoleBranchIdStr = filterBranchId ? String(filterBranchId) : null;
   useBdsSubscription(({ scope, branchId }) => {
     if (scope === "all" || (consoleBranchIdStr && String(branchId) === consoleBranchIdStr)) {
       (async () => {
-        try { // Added try-catch block
+        try {
           const allDepts = await base44.entities.BranchDepartmentSetting.list();
           const filteredDepts = allDepts.filter(d => String(d.branch_id) === String(consoleBranchIdStr) && d.is_active === true);
           setActiveDepartments(filteredDepts);
           await loadData();
-          await loadBranches(); // refresh branches on broadcast
+          await loadBranches();
           setError(null);
         } catch (e) {
           console.error("Error during BDS subscription update:", e);
-          setError(e.message || 'שגיאה בעדכון נתונים בזמן אמת. אנא רענן.'); // Generic error message
         }
       })();
     }
@@ -263,75 +247,18 @@ export default function ConsolePage() {
     } catch (error) {
       console.error('[Console] Error selecting department:', error);
       alert("שגיאה בטעינת המחלקה. אנא נסה שוב.");
-      setError(error.message || 'שגיאה בבחירת מחלקה. אנא נסה שוב.'); // Generic error message
     }
-  };
-
-  const speakHebrewNumber = async (seq) => {
-    if (!('speechSynthesis' in window)) return;
-
-    const numberToHebrewWords = (num) => {
-      const ones = ["", "אחת", "שתיים", "שלוש", "ארבע", "חמש", "שש", "שבע", "שמונה", "תשע"];
-      const teens = ["עשר", "אחת עשרה", "שתים עשרה", "שלוש עשרה", "ארבעה עשרה", "חמש עשרה", "שש עשרה", "שבע עשרה", "שמונה עשרה", "תשע עשרה"];
-      const tens = ["", "", "עשרים", "שלושים", "ארבעים", "חמישים", "שישים", "שבעים", "שמונים", "תשעים"];
-
-      if (num === 0) return "אפס";
-      if (num < 10) return ones[num];
-      if (num >= 10 && num < 20) return teens[num - 10];
-      if (num >= 20 && num < 100) {
-        const ten = Math.floor(num / 10);
-        const one = num % 10;
-        if (one === 0) return tens[ten];
-        return ones[one] + " ו" + tens[ten];
-      }
-      return num.toString();
-    };
-
-    const getVoicesWithRetry = () =>
-      new Promise((resolve) => {
-        const ss = window.speechSynthesis;
-        let tries = 12;
-        const tick = () => {
-          const list = ss.getVoices();
-          if (list && list.length) return resolve(list);
-          if (--tries <= 0) return resolve([]);
-          setTimeout(tick, 120);
-        };
-        tick();
-      });
-
-    const pickHebrewVoice = (voices) => {
-      return (
-        voices.find((v) => /carmit/i.test(v.name)) ||
-        voices.find((v) => (v.lang || "").toLowerCase().startsWith("he")) ||
-        null
-      );
-    };
-
-    const ss = window.speechSynthesis;
-    try { ss.cancel(); ss.resume(); } catch (e) { /* ignore */ }
-
-    const voices = await getVoicesWithRetry();
-    const heVoice = pickHebrewVoice(voices);
-
-    const hebrewNumber = numberToHebrewWords(seq);
-    const utteranceText = `מספר ${hebrewNumber}, לגשת לעמדה`;
-    const utterance = new SpeechSynthesisUtterance(utteranceText);
-
-    utterance.lang = 'he-IL';
-    utterance.volume = 1;
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    if (heVoice) utterance.voice = heVoice;
-
-    try { ss.resume(); } catch (e) { /* ignore */ }
-    ss.speak(utterance);
   };
 
   const callNext = async () => {
     const nextTicket = waitingTickets[0];
     if (!nextTicket) {
       alert("אין כרטיסים ממתינים");
+      return;
+    }
+
+    if (!user) {
+      alert("שגיאה: משתמש לא מחובר");
       return;
     }
 
@@ -356,19 +283,23 @@ export default function ConsolePage() {
         actor_email: user.email
       });
 
-      setPlayAudio({ ticket: nextTicket });
-      setTimeout(() => setPlayAudio(null), 100);
+      // Broadcast to Display screens
+      broadcastTicketCall(nextTicket, queue.name);
 
       loadData();
       setError(null);
     } catch (e) {
       console.error("Error calling next ticket:", e);
-      setError(e.message || 'שגיאה בקריאת התור הבא. אנא נסה שוב.'); // Generic error message
+      setError('שגיאה בקריאת התור הבא');
     }
   };
 
   const recall = async () => {
     if (!currentTicket) return;
+    if (!user) {
+      alert("שגיאה: משתמש לא מחובר");
+      return;
+    }
 
     try {
       await base44.entities.TicketEvent.create({
@@ -378,19 +309,23 @@ export default function ConsolePage() {
         actor_email: user.email
       });
 
-      setPlayAudio({ ticket: currentTicket });
-      setTimeout(() => setPlayAudio(null), 100);
+      // Broadcast to Display screens
+      broadcastTicketCall(currentTicket, queue.name);
 
       alert(`כרטיס ${currentTicket.seq} נקרא שוב`);
       setError(null);
     } catch (e) {
       console.error("Error recalling ticket:", e);
-      setError(e.message || 'שגיאה בקריאה חוזרת של התור. אנא נסה שוב.'); // Generic error message
+      setError('שגיאה בקריאה חוזרת');
     }
   };
 
   const finishService = async () => {
     if (!currentTicket) return;
+    if (!user) {
+      alert("שגיאה: משתמש לא מחובר");
+      return;
+    }
 
     try {
       const finishedAt = new Date();
@@ -423,12 +358,16 @@ export default function ConsolePage() {
       }
     } catch (e) {
       console.error("Error finishing service:", e);
-      setError(e.message || 'שגיאה בסיום שירות. אנא נסה שוב.'); // Generic error message
+      setError('שגיאה בסיום שירות');
     }
   };
 
   const skipTicket = async () => {
     if (!currentTicket) return;
+    if (!user) {
+      alert("שגיאה: משתמש לא מחובר");
+      return;
+    }
 
     try {
       await base44.entities.Ticket.update(currentTicket.id, {
@@ -446,12 +385,16 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error skipping ticket:", e);
-      setError(e.message || 'שגיאה בדילוג על התור. אנא נסה שוב.'); // Generic error message
+      setError('שגיאה בדילוג');
     }
   };
 
   const customerLeft = async () => {
     if (!currentTicket) return;
+    if (!user) {
+      alert("שגיאה: משתמש לא מחובר");
+      return;
+    }
 
     try {
       await base44.entities.Ticket.update(currentTicket.id, {
@@ -470,12 +413,16 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error handling customer left:", e);
-      setError(e.message || 'שגיאה בביטול התור. אנא נסה שוב.'); // Generic error message
+      setError('שגיאה בביטול');
     }
   };
 
   const requeueTicket = async () => {
     if (!currentTicket) return;
+    if (!user) {
+      alert("שגיאה: משתמש לא מחובר");
+      return;
+    }
 
     try {
       await base44.entities.Ticket.update(currentTicket.id, {
@@ -496,12 +443,16 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error requeueing ticket:", e);
-      setError(e.message || 'שגיאה בהחזרת התור. אנא נסה שוב.'); // Generic error message
+      setError('שגיאה בהחזרה');
     }
   };
 
   const transferTicket = async () => {
     if (!currentTicket || !targetDepartmentName) return;
+    if (!user) {
+      alert("שגיאה: משתמש לא מחובר");
+      return;
+    }
 
     const filterBranchId = branch_id || user?.branch_id;
 
@@ -517,7 +468,7 @@ export default function ConsolePage() {
       if (targetQueues && targetQueues.length > 0) {
         targetQueueEntity = targetQueues[0];
       } else {
-        alert(`המחלקה "${targetDepartmentName}" אינה זמינה להעברה. אנא פנה למנהל המערכת.`);
+        alert(`המחלקה "${targetDepartmentName}" אינה זמינה להעברה`);
         setTransferDialog(false);
         setTargetDepartmentName("");
         return;
@@ -547,11 +498,10 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error transferring ticket:", e);
-      setError(e.message || 'שגיאה בהעברת התור. אנא נסה שוב.'); // Generic error message
+      setError('שגיאה בהעברה');
     }
   };
 
-  // NEW: חיפוש תור לפי מספר
   const searchTicket = async () => {
     if (!searchSeq || !queue_id) {
       setSearchMessage("אנא הזן מספר תור");
@@ -584,19 +534,20 @@ export default function ConsolePage() {
       console.error("Error searching ticket:", error);
       setSearchMessage("שגיאה בחיפוש התור");
       setFoundTicket(null);
-      setError(error.message || 'שגיאה בחיפוש התור. אנא נסה שוב.'); // Generic error message
     }
   };
 
-  // NEW: קידום תור לתחילת התור
   const promoteTicket = async () => {
     if (!foundTicket || foundTicket.state !== "waiting") {
       alert("ניתן לקדם רק כרטיסים ממתינים");
       return;
     }
+    if (!user) {
+      alert("שגיאה: משתמש לא מחובר");
+      return;
+    }
 
     try {
-      // מצא את כל הכרטיסים הממתינים
       const allWaitingTickets = await base44.entities.Ticket.filter({ queue_id, state: "waiting" });
 
       if (allWaitingTickets.length === 0) {
@@ -604,19 +555,15 @@ export default function ConsolePage() {
         return;
       }
 
-      // מצא את המספר הקטן ביותר בתור
-      // Filter out the ticket being promoted itself from minSeq calculation if it's already there
       const currentMinSeq = Math.min(...allWaitingTickets.map(t => t.seq));
 
-      // עדכן את הכרטיס המקודם להיות ראשון
       await base44.entities.Ticket.update(foundTicket.id, {
         seq: currentMinSeq - 1
       });
 
-      // רשום אירוע
       await base44.entities.TicketEvent.create({
         ticket_id: foundTicket.id,
-        event_type: "transferred", // Using transferred as the closest event type for now
+        event_type: "transferred",
         actor_role: "staff",
         actor_email: user.email,
         notes: "קודם לתחילת התור"
@@ -626,13 +573,11 @@ export default function ConsolePage() {
       setFoundTicket(null);
       setSearchSeq("");
 
-      // רענן את הנתונים
       await loadData();
       setError(null);
     } catch (error) {
       console.error("Error promoting ticket:", error);
       alert("שגיאה בקידום התור");
-      setError(error.message || 'שגיאה בקידום התור. אנא נסה שוב.'); // Generic error message
     }
   };
 
@@ -643,7 +588,17 @@ export default function ConsolePage() {
     return historyTickets.filter(t => String(t.seq).includes(historySearchSeq));
   };
 
-  // NEW: Error display logic
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#E6F9EA' }}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 mx-auto mb-4" style={{ borderColor: '#41B649' }}></div>
+          <p className="text-xl text-gray-700">טוען...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#E6F9EA' }}>
@@ -655,17 +610,6 @@ export default function ConsolePage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#E6F9EA' }}>
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 mx-auto mb-4" style={{ borderColor: '#41B649' }}></div>
-          <p className="text-xl text-gray-700">טוען...</p>
-        </div>
       </div>
     );
   }
@@ -763,18 +707,6 @@ export default function ConsolePage() {
               <CardContent className="p-12 text-center">
                 <p className="text-2xl font-bold mb-4" style={{ color: '#1F5F25' }}>אין מחלקות פעילות כרגע</p>
                 <p className="text-gray-600 mb-4">אנא פנה למנהל המערכת</p>
-                <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-600 mb-2">מידע לדיבוג:</p>
-                  <p className="text-sm text-gray-500">branch_id: {branch_id || user?.branch_id}</p>
-                  <p className="text-sm text-gray-500">מחלקות שנמצאו: {activeDepartments.length}</p>
-                  <Button
-                    onClick={() => window.location.href = createPageUrl("Admin")}
-                    className="mt-4 text-white"
-                    style={{ backgroundColor: '#41B649' }}
-                  >
-                    עבור לעמוד ניהול מערכת
-                  </Button>
-                </div>
               </CardContent>
             </Card>
           )}
@@ -796,12 +728,6 @@ export default function ConsolePage() {
 
   return (
     <div className="min-h-screen p-4 md:p-8" dir="rtl" style={{ backgroundColor: '#E6F9EA' }}>
-      {playAudio && (
-        <AudioNotification
-          ticket={playAudio.ticket}
-        />
-      )}
-
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex-1 text-center">
@@ -865,8 +791,6 @@ export default function ConsolePage() {
                         onClick={searchTicket}
                         className="gap-2 text-white hover:opacity-90"
                         style={{ backgroundColor: '#41B649' }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1F5F25'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#41B649'}
                       >
                         חפש
                       </Button>
@@ -885,8 +809,6 @@ export default function ConsolePage() {
                         onClick={promoteTicket}
                         className="gap-2 text-white hover:opacity-90"
                         style={{ backgroundColor: '#E52521' }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BD1F1C'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E52521'}
                       >
                         ⬆️ קדם לתחילת התור
                       </Button>
@@ -923,8 +845,6 @@ export default function ConsolePage() {
                           onClick={recall}
                           className="gap-2 text-white"
                           style={{ backgroundColor: '#E52521' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BD1F1C'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E52521'}
                         >
                           <Volume2 className="w-4 h-4" />
                           קריאה חוזרת
@@ -934,8 +854,6 @@ export default function ConsolePage() {
                           onClick={finishService}
                           className="gap-2 text-white"
                           style={{ backgroundColor: '#41B649' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1F5F25'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#41B649'}
                         >
                           סיים שירות
                         </Button>
@@ -944,8 +862,6 @@ export default function ConsolePage() {
                           onClick={skipTicket}
                           className="gap-2 text-white"
                           style={{ backgroundColor: '#E52521' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BD1F1C'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E52521'}
                         >
                           <SkipForward className="w-4 h-4" />
                           דלג
@@ -955,8 +871,6 @@ export default function ConsolePage() {
                           onClick={customerLeft}
                           className="gap-2 text-white"
                           style={{ backgroundColor: '#E52521' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BD1F1C'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E52521'}
                         >
                           <XCircle className="w-4 h-4" />
                           לקוח עזב
@@ -966,8 +880,6 @@ export default function ConsolePage() {
                           onClick={requeueTicket}
                           className="gap-2 text-white"
                           style={{ backgroundColor: '#41B649' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1F5F25'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#41B649'}
                         >
                           <RotateCcw className="w-4 h-4" />
                           החזר לתור
@@ -977,8 +889,6 @@ export default function ConsolePage() {
                           onClick={() => setTransferDialog(true)}
                           className="gap-2 text-white"
                           style={{ backgroundColor: '#E52521' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BD1F1C'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E52521'}
                         >
                           <ArrowRightLeft className="w-4 h-4" />
                           העבר מחלקה
@@ -993,15 +903,13 @@ export default function ConsolePage() {
                         size="lg"
                         className="gap-2 text-white shadow-lg"
                         style={{ backgroundColor: '#E52521' }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BD1F1C'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E52521'}
                       >
                         <PhoneCall className="w-5 h-5" />
                         קרא הבא
                       </Button>
                       {onBreak && (
                         <p className="text-sm text-gray-500 mt-3">
-                          אתה במצב הפסקה. לחץ "חזור לעבודה" למעלה או "קרא הבא" כדי להמשיך
+                          אתה במצב הפסקה
                         </p>
                       )}
                     </div>
@@ -1134,8 +1042,6 @@ export default function ConsolePage() {
               disabled={!targetDepartmentName}
               className="text-white hover:opacity-90"
               style={{ backgroundColor: '#E52521' }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BD1F1C'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E52521'}
             >
               העבר
             </Button>
