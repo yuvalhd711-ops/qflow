@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import {
   PhoneCall, Volume2, SkipForward,
   ArrowRightLeft, XCircle, Coffee, RotateCcw,
-  History // NEW: Import History icon
+  History
 } from "lucide-react";
 import { motion } from "framer-motion";
 import AudioNotification from "../components/queue/AudioNotification";
@@ -28,13 +28,13 @@ import {
 } from "@/components/ui/select";
 import { createPageUrl } from "@/utils";
 import { useBdsSubscription } from "@/components/utils/bdsSync";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // NEW: Import Tabs components
-import { Badge } from "@/components/ui/badge"; // NEW: Import Badge
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 
 export default function ConsolePage() {
   const navigate = useNavigate();
   const urlParams = new URLSearchParams(window.location.search);
-  const branch_id = urlParams.get('branch_id'); // כ-string
+  const branch_id = urlParams.get('branch_id');
   const queue_id = urlParams.get('queue_id');
 
   const [activeDepartments, setActiveDepartments] = useState([]);
@@ -47,35 +47,50 @@ export default function ConsolePage() {
   const [loading, setLoading] = useState(true);
   const [playAudio, setPlayAudio] = useState(null);
   const [onBreak, setOnBreak] = useState(false);
-  // NEW: dynamic branches list
   const [branches, setBranches] = useState([]);
-
-  // NEW: חיפוש תור
   const [searchSeq, setSearchSeq] = useState("");
   const [foundTicket, setFoundTicket] = useState(null);
   const [searchMessage, setSearchMessage] = useState("");
-
-  // NEW: history state
   const [historyTickets, setHistoryTickets] = useState([]);
   const [historySearchSeq, setHistorySearchSeq] = useState("");
+  // NEW: Error state
+  const [error, setError] = useState(null);
 
   const loadBranches = useCallback(async () => {
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Timeout')), 3000)
+    );
+
     try {
-      const list = await base44.entities.Branch.list();
+      const list = await Promise.race([
+        base44.entities.Branch.list(),
+        timeout
+      ]);
       setBranches(list);
+      setError(null); // Clear error on successful load
     } catch (error) {
       console.error("Error loading branches:", error);
+      setError('שגיאה בטעינת נתונים. אנא נסה שוב.');
       setBranches([]);
     }
   }, []);
 
   const loadQueue = useCallback(async () => {
     if (!queue_id) return;
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Timeout')), 3000)
+    );
+
     try {
-      const queueData = await base44.entities.Queue.get(queue_id);
+      const queueData = await Promise.race([
+        base44.entities.Queue.get(queue_id),
+        timeout
+      ]);
       setQueue(queueData);
+      setError(null); // Clear error on successful load
     } catch (error) {
       console.error("Queue not found:", error);
+      setError('שגיאה בטעינת התור. אנא נסה שוב.');
       setQueue(null);
       const url = createPageUrl("Console") + (branch_id ? `?branch_id=${branch_id}` : '');
       navigate(url);
@@ -85,25 +100,51 @@ export default function ConsolePage() {
   const loadData = useCallback(async () => {
     if (!queue_id) return;
 
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Timeout')), 3000)
+    );
+
     try {
-      const tickets = await base44.entities.Ticket.filter({ queue_id, state: "waiting" }, "seq");
-      setWaitingTickets(tickets);
+      const [ticketsResult, currentTicketsResult] = await Promise.allSettled([
+        Promise.race([
+          base44.entities.Ticket.filter({ queue_id, state: "waiting" }, "seq"),
+          timeout
+        ]),
+        Promise.race([
+          base44.entities.Ticket.filter({ queue_id }),
+          timeout
+        ])
+      ]);
 
-      const currentTickets = await base44.entities.Ticket.filter({ queue_id });
-      const activeTicket = currentTickets.find(t => t.state === "called" || t.state === "in_service");
-      setCurrentTicket(activeTicket || null);
+      if (ticketsResult.status === 'fulfilled') {
+        setWaitingTickets(ticketsResult.value);
+      } else {
+        console.error("Error loading waiting tickets:", ticketsResult.reason);
+        setWaitingTickets([]);
+      }
 
-      // NEW: load history tickets (today)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const allTickets = await base44.entities.Ticket.filter({ queue_id });
-      const todayHistory = allTickets.filter(t =>
-        (t.state === "served" || t.state === "cancelled" || t.state === "skipped") &&
-        new Date(t.created_date) >= today
-      ).sort((a, b) => new Date(b.finished_at || b.updated_date) - new Date(a.finished_at || a.updated_date));
-      setHistoryTickets(todayHistory);
+      if (currentTicketsResult.status === 'fulfilled') {
+        const allTickets = currentTicketsResult.value;
+        const activeTicket = allTickets.find(t => t.state === "called" || t.state === "in_service");
+        setCurrentTicket(activeTicket || null);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayHistory = allTickets.filter(t =>
+          (t.state === "served" || t.state === "cancelled" || t.state === "skipped") &&
+          new Date(t.created_date) >= today
+        ).sort((a, b) => new Date(b.finished_at || b.updated_date) - new Date(a.finished_at || a.updated_date));
+        setHistoryTickets(todayHistory);
+      } else {
+        console.error("Error loading current/history tickets:", currentTicketsResult.reason);
+        setCurrentTicket(null);
+        setHistoryTickets([]);
+      }
+
+      setError(null); // Clear error on successful data load
     } catch (error) {
       console.error("Error loading data:", error);
+      setError('שגיאה בטעינת נתוני התור. אנא נסה שוב.');
       setWaitingTickets([]);
       setCurrentTicket(null);
       setHistoryTickets([]);
@@ -116,29 +157,33 @@ export default function ConsolePage() {
 
   useEffect(() => {
     const loadDepartments = async () => {
-      const userData = await base44.auth.me();
-      setUser(userData);
-
-      const filterBranchId = branch_id || userData.branch_id;
-
-      console.log(`[Console] Loading departments for branch_id: ${filterBranchId} (type: ${typeof filterBranchId})`);
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout')), 3000)
+      );
 
       try {
-        const allDepts = await base44.entities.BranchDepartmentSetting.list();
-        console.log(`[Console] All BranchDepartmentSettings:`, allDepts);
+        const userData = await Promise.race([
+          base44.auth.me(),
+          timeout
+        ]);
+        setUser(userData);
 
-        const filteredDepts = allDepts.filter(d => {
-          const branchIdMatch = String(d.branch_id) === String(filterBranchId);
-          const isActiveMatch = d.is_active === true;
-          const matches = branchIdMatch && isActiveMatch;
-          console.log(`[Console] Dept "${d.department}": branch_id="${d.branch_id}" (type: ${typeof d.branch_id}) vs "${filterBranchId}", match=${branchIdMatch}, is_active=${d.is_active}, final=${matches}`);
-          return matches;
-        });
+        const filterBranchId = branch_id || userData.branch_id;
 
-        console.log(`[Console] Filtered to ${filteredDepts.length} active departments:`, filteredDepts);
+        const allDepts = await Promise.race([
+          base44.entities.BranchDepartmentSetting.list(),
+          timeout
+        ]);
+
+        const filteredDepts = allDepts.filter(d =>
+          String(d.branch_id) === String(filterBranchId) && d.is_active === true
+        );
+
         setActiveDepartments(filteredDepts);
+        setError(null); // Clear error on successful load
       } catch (error) {
         console.error('[Console] Error loading departments:', error);
+        setError('שגיאה בטעינת הגדרות מחלקות. אנא נסה שוב.');
         setActiveDepartments([]);
       }
 
@@ -168,11 +213,17 @@ export default function ConsolePage() {
   useBdsSubscription(({ scope, branchId }) => {
     if (scope === "all" || (consoleBranchIdStr && String(branchId) === consoleBranchIdStr)) {
       (async () => {
-        const allDepts = await base44.entities.BranchDepartmentSetting.list();
-        const filteredDepts = allDepts.filter(d => String(d.branch_id) === String(consoleBranchIdStr) && d.is_active === true);
-        setActiveDepartments(filteredDepts);
-        await loadData();
-        await loadBranches(); // refresh branches on broadcast
+        try {
+          const allDepts = await base44.entities.BranchDepartmentSetting.list();
+          const filteredDepts = allDepts.filter(d => String(d.branch_id) === String(consoleBranchIdStr) && d.is_active === true);
+          setActiveDepartments(filteredDepts);
+          await loadData();
+          await loadBranches(); // refresh branches on broadcast
+          setError(null);
+        } catch (e) {
+          console.error("Error during BDS subscription update:", e);
+          setError('שגיאה בעדכון נתונים בזמן אמת. אנא רענן.');
+        }
       })();
     }
   });
@@ -193,7 +244,6 @@ export default function ConsolePage() {
   const selectDepartment = async (deptName) => {
     const filterBranchId = branch_id || user?.branch_id;
     const branchIdStr = String(filterBranchId);
-    console.log(`[Console] Selecting department: ${deptName} for branch ${branchIdStr}`);
 
     try {
       const q = await ensureQueue(branchIdStr, deptName);
@@ -206,6 +256,7 @@ export default function ConsolePage() {
     } catch (error) {
       console.error('[Console] Error selecting department:', error);
       alert("שגיאה בטעינת המחלקה. אנא נסה שוב.");
+      setError('שגיאה בבחירת מחלקה. אנא נסה שוב.');
     }
   };
 
@@ -251,7 +302,7 @@ export default function ConsolePage() {
     };
 
     const ss = window.speechSynthesis;
-    try { ss.cancel(); ss.resume(); } catch (e) {}
+    try { ss.cancel(); ss.resume(); } catch (e) { /* ignore */ }
 
     const voices = await getVoicesWithRetry();
     const heVoice = pickHebrewVoice(voices);
@@ -266,153 +317,180 @@ export default function ConsolePage() {
     utterance.pitch = 1;
     if (heVoice) utterance.voice = heVoice;
 
-    try { ss.resume(); } catch (e) {}
+    try { ss.resume(); } catch (e) { /* ignore */ }
     ss.speak(utterance);
   };
 
   const callNext = async () => {
-    // onBreak only prevents automatic calls, manual calls are allowed.
-    // The "אתה בהפסקה" text on the button is removed and replaced by "קרא הבא" always.
-    // If onBreak is true, the user is manually choosing to call next.
-
     const nextTicket = waitingTickets[0];
     if (!nextTicket) {
       alert("אין כרטיסים ממתינים");
       return;
     }
 
-    await base44.entities.Ticket.update(nextTicket.id, {
-      state: "in_service",
-      called_at: new Date().toISOString(),
-      started_at: new Date().toISOString()
-    });
+    try {
+      await base44.entities.Ticket.update(nextTicket.id, {
+        state: "in_service",
+        called_at: new Date().toISOString(),
+        started_at: new Date().toISOString()
+      });
 
-    await base44.entities.TicketEvent.create({
-      ticket_id: nextTicket.id,
-      event_type: "called",
-      actor_role: "staff",
-      actor_email: user.email
-    });
+      await base44.entities.TicketEvent.create({
+        ticket_id: nextTicket.id,
+        event_type: "called",
+        actor_role: "staff",
+        actor_email: user.email
+      });
 
-    await base44.entities.TicketEvent.create({
-      ticket_id: nextTicket.id,
-      event_type: "started",
-      actor_role: "staff",
-      actor_email: user.email
-    });
+      await base44.entities.TicketEvent.create({
+        ticket_id: nextTicket.id,
+        event_type: "started",
+        actor_role: "staff",
+        actor_email: user.email
+      });
 
-    // Removed extra TTS to avoid duplicate announcements; rely on AudioNotification
-    // await speakHebrewNumber(nextTicket.seq);
-    setPlayAudio({ ticket: nextTicket });
-    setTimeout(() => setPlayAudio(null), 100);
+      setPlayAudio({ ticket: nextTicket });
+      setTimeout(() => setPlayAudio(null), 100);
 
-    loadData();
+      loadData();
+      setError(null);
+    } catch (e) {
+      console.error("Error calling next ticket:", e);
+      setError('שגיאה בקריאת התור הבא. אנא נסה שוב.');
+    }
   };
 
   const recall = async () => {
     if (!currentTicket) return;
 
-    await base44.entities.TicketEvent.create({
-      ticket_id: currentTicket.id,
-      event_type: "recalled",
-      actor_role: "staff",
-      actor_email: user.email
-    });
+    try {
+      await base44.entities.TicketEvent.create({
+        ticket_id: currentTicket.id,
+        event_type: "recalled",
+        actor_role: "staff",
+        actor_email: user.email
+      });
 
-    // Removed extra TTS to avoid duplicate announcements; rely on AudioNotification
-    // await speakHebrewNumber(currentTicket.seq);
-    setPlayAudio({ ticket: currentTicket });
-    setTimeout(() => setPlayAudio(null), 100);
+      setPlayAudio({ ticket: currentTicket });
+      setTimeout(() => setPlayAudio(null), 100);
 
-    alert(`כרטיס ${currentTicket.seq} נקרא שוב`);
+      alert(`כרטיס ${currentTicket.seq} נקרא שוב`);
+      setError(null);
+    } catch (e) {
+      console.error("Error recalling ticket:", e);
+      setError('שגיאה בקריאה חוזרת של התור. אנא נסה שוב.');
+    }
   };
 
   const finishService = async () => {
     if (!currentTicket) return;
 
-    const finishedAt = new Date();
-    const startedAt = new Date(currentTicket.started_at);
-    const serviceTime = Math.floor((finishedAt - startedAt) / 1000);
+    try {
+      const finishedAt = new Date();
+      const startedAt = new Date(currentTicket.started_at);
+      const serviceTime = Math.floor((finishedAt - startedAt) / 1000);
 
-    await base44.entities.Ticket.update(currentTicket.id, {
-      state: "served",
-      finished_at: finishedAt.toISOString()
-    });
+      await base44.entities.Ticket.update(currentTicket.id, {
+        state: "served",
+        finished_at: finishedAt.toISOString()
+      });
 
-    const currentAvg = queue.avg_service_time_seconds || 180;
-    const newAvg = Math.floor((currentAvg * 0.8) + (serviceTime * 0.2));
-    await base44.entities.Queue.update(queue_id, { avg_service_time_seconds: newAvg });
+      const currentAvg = queue.avg_service_time_seconds || 180;
+      const newAvg = Math.floor((currentAvg * 0.8) + (serviceTime * 0.2));
+      await base44.entities.Queue.update(queue_id, { avg_service_time_seconds: newAvg });
 
-    await base44.entities.TicketEvent.create({
-      ticket_id: currentTicket.id,
-      event_type: "finished",
-      actor_role: "staff",
-      actor_email: user.email
-    });
+      await base44.entities.TicketEvent.create({
+        ticket_id: currentTicket.id,
+        event_type: "finished",
+        actor_role: "staff",
+        actor_email: user.email
+      });
 
-    await loadData();
+      await loadData();
+      setError(null);
 
-    // קריאה אוטומטית לתור הבא אם לא במצב הפסקה
-    if (!onBreak) {
-      setTimeout(() => {
-        callNext();
-      }, 500);
+      if (!onBreak) {
+        setTimeout(() => {
+          callNext();
+        }, 500);
+      }
+    } catch (e) {
+      console.error("Error finishing service:", e);
+      setError('שגיאה בסיום שירות. אנא נסה שוב.');
     }
   };
 
   const skipTicket = async () => {
     if (!currentTicket) return;
 
-    await base44.entities.Ticket.update(currentTicket.id, {
-      state: "skipped"
-    });
+    try {
+      await base44.entities.Ticket.update(currentTicket.id, {
+        state: "skipped"
+      });
 
-    await base44.entities.TicketEvent.create({
-      ticket_id: currentTicket.id,
-      event_type: "skipped",
-      actor_role: "staff",
-      actor_email: user.email
-    });
+      await base44.entities.TicketEvent.create({
+        ticket_id: currentTicket.id,
+        event_type: "skipped",
+        actor_role: "staff",
+        actor_email: user.email
+      });
 
-    loadData();
+      loadData();
+      setError(null);
+    } catch (e) {
+      console.error("Error skipping ticket:", e);
+      setError('שגיאה בדילוג על התור. אנא נסה שוב.');
+    }
   };
 
   const customerLeft = async () => {
     if (!currentTicket) return;
 
-    await base44.entities.Ticket.update(currentTicket.id, {
-      state: "cancelled"
-    });
+    try {
+      await base44.entities.Ticket.update(currentTicket.id, {
+        state: "cancelled"
+      });
 
-    await base44.entities.TicketEvent.create({
-      ticket_id: currentTicket.id,
-      event_type: "cancelled",
-      actor_role: "staff",
-      actor_email: user.email,
-      notes: "לקוח עזב"
-    });
+      await base44.entities.TicketEvent.create({
+        ticket_id: currentTicket.id,
+        event_type: "cancelled",
+        actor_role: "staff",
+        actor_email: user.email,
+        notes: "לקוח עזב"
+      });
 
-    loadData();
+      loadData();
+      setError(null);
+    } catch (e) {
+      console.error("Error handling customer left:", e);
+      setError('שגיאה בביטול התור. אנא נסה שוב.');
+    }
   };
 
   const requeueTicket = async () => {
     if (!currentTicket) return;
 
-    await base44.entities.Ticket.update(currentTicket.id, {
-      state: "waiting",
-      called_at: null,
-      started_at: null
-    });
+    try {
+      await base44.entities.Ticket.update(currentTicket.id, {
+        state: "waiting",
+        called_at: null,
+        started_at: null
+      });
 
-    await base44.entities.TicketEvent.create({
-      ticket_id: currentTicket.id,
-      event_type: "transferred",
-      actor_role: "staff",
-      actor_email: user.email,
-      notes: "הוחזר לתור"
-    });
+      await base44.entities.TicketEvent.create({
+        ticket_id: currentTicket.id,
+        event_type: "transferred",
+        actor_role: "staff",
+        actor_email: user.email,
+        notes: "הוחזר לתור"
+      });
 
-    loadData();
+      loadData();
+      setError(null);
+    } catch (e) {
+      console.error("Error requeueing ticket:", e);
+      setError('שגיאה בהחזרת התור. אנא נסה שוב.');
+    }
   };
 
   const transferTicket = async () => {
@@ -420,45 +498,50 @@ export default function ConsolePage() {
 
     const filterBranchId = branch_id || user?.branch_id;
 
-    // Get all queues and filter them locally, ensuring the target queue is active
-    const allQueues = await base44.entities.Queue.list();
-    const targetQueues = allQueues.filter(q =>
-      String(q.branch_id) === String(filterBranchId) &&
-      q.name === targetDepartmentName &&
-      q.is_active === true
-    );
+    try {
+      const allQueues = await base44.entities.Queue.list();
+      const targetQueues = allQueues.filter(q =>
+        String(q.branch_id) === String(filterBranchId) &&
+        q.name === targetDepartmentName &&
+        q.is_active === true
+      );
 
-    let targetQueueEntity;
-    if (targetQueues && targetQueues.length > 0) {
-      targetQueueEntity = targetQueues[0];
-    } else {
-      alert(`המחלקה "${targetDepartmentName}" אינה זמינה להעברה. אנא פנה למנהל המערכת.`);
+      let targetQueueEntity;
+      if (targetQueues && targetQueues.length > 0) {
+        targetQueueEntity = targetQueues[0];
+      } else {
+        alert(`המחלקה "${targetDepartmentName}" אינה זמינה להעברה. אנא פנה למנהל המערכת.`);
+        setTransferDialog(false);
+        setTargetDepartmentName("");
+        return;
+      }
+
+      const newSeq = (targetQueueEntity.seq_counter || 0) + 1;
+
+      await base44.entities.Queue.update(targetQueueEntity.id, { seq_counter: newSeq });
+
+      await base44.entities.Ticket.update(currentTicket.id, {
+        queue_id: targetQueueEntity.id,
+        seq: newSeq,
+        state: "waiting"
+      });
+
+      await base44.entities.TicketEvent.create({
+        ticket_id: currentTicket.id,
+        event_type: "transferred",
+        actor_role: "staff",
+        actor_email: user.email,
+        notes: `הועבר לתור: ${targetQueueEntity.name}`
+      });
+
       setTransferDialog(false);
       setTargetDepartmentName("");
-      return;
+      loadData();
+      setError(null);
+    } catch (e) {
+      console.error("Error transferring ticket:", e);
+      setError('שגיאה בהעברת התור. אנא נסה שוב.');
     }
-
-    const newSeq = (targetQueueEntity.seq_counter || 0) + 1;
-
-    await base44.entities.Queue.update(targetQueueEntity.id, { seq_counter: newSeq });
-
-    await base44.entities.Ticket.update(currentTicket.id, {
-      queue_id: targetQueueEntity.id,
-      seq: newSeq,
-      state: "waiting"
-    });
-
-    await base44.entities.TicketEvent.create({
-      ticket_id: currentTicket.id,
-      event_type: "transferred",
-      actor_role: "staff",
-      actor_email: user.email,
-      notes: `הועבר לתור: ${targetQueueEntity.name}`
-    });
-
-    setTransferDialog(false);
-    setTargetDepartmentName("");
-    loadData();
   };
 
   // NEW: חיפוש תור לפי מספר
@@ -489,10 +572,12 @@ export default function ConsolePage() {
         setFoundTicket(null);
         setSearchMessage(`✗ תור ${searchSeq} לא נמצא במחלקה זו`);
       }
+      setError(null);
     } catch (error) {
       console.error("Error searching ticket:", error);
       setSearchMessage("שגיאה בחיפוש התור");
       setFoundTicket(null);
+      setError('שגיאה בחיפוש התור. אנא נסה שוב.');
     }
   };
 
@@ -536,9 +621,11 @@ export default function ConsolePage() {
 
       // רענן את הנתונים
       await loadData();
+      setError(null);
     } catch (error) {
       console.error("Error promoting ticket:", error);
       alert("שגיאה בקידום התור");
+      setError('שגיאה בקידום התור. אנא נסה שוב.');
     }
   };
 
@@ -549,6 +636,21 @@ export default function ConsolePage() {
     return historyTickets.filter(t => String(t.seq).includes(historySearchSeq));
   };
 
+  // NEW: Error display logic
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#E6F9EA' }}>
+        <Card className="bg-white shadow-xl max-w-md" style={{ borderColor: '#E52521', borderWidth: '2px' }}>
+          <CardContent className="p-12 text-center">
+            <p className="text-2xl font-bold mb-4" style={{ color: '#E52521' }}>{error}</p>
+            <Button onClick={() => window.location.reload()} className="text-white" style={{ backgroundColor: '#41B649' }}>
+              נסה שוב
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -684,12 +786,12 @@ export default function ConsolePage() {
       )}
 
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div className="flex-1 text-center md:text-right">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex-1 text-center">
             <img
               src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68dbe1252279022b9e191013/8866f21c5_SHuk_LOGO_HAYIR.png"
               alt="שוק העיר"
-              className="h-12 w-auto mx-auto md:mx-0 mb-2"
+              className="h-12 w-auto mx-auto mb-2"
             />
             <h1 className="text-3xl font-bold" style={{ color: '#111111' }}>{queue.name}</h1>
             <p className="text-gray-600">קונסולת עובד</p>
@@ -869,17 +971,17 @@ export default function ConsolePage() {
                   ) : (
                     <div className="text-center py-12">
                       <p className="text-gray-600 mb-6">אין כרטיס נוכחי</p>
-                        <Button
-                          onClick={callNext}
-                          size="lg"
-                          className="gap-2 text-white shadow-lg"
-                          style={{ backgroundColor: '#E52521' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BD1F1C'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E52521'}
-                        >
-                          <PhoneCall className="w-5 h-5" />
-                          קרא הבא
-                        </Button>
+                      <Button
+                        onClick={callNext}
+                        size="lg"
+                        className="gap-2 text-white shadow-lg"
+                        style={{ backgroundColor: '#E52521' }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#BD1F1C'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#E52521'}
+                      >
+                        <PhoneCall className="w-5 h-5" />
+                        קרא הבא
+                      </Button>
                       {onBreak && (
                         <p className="text-sm text-gray-500 mt-3">
                           אתה במצב הפסקה. לחץ "חזור לעבודה" למעלה או "קרא הבא" כדי להמשיך
@@ -902,15 +1004,15 @@ export default function ConsolePage() {
                           {idx + 1}
                         </div>
                         <Card className="flex-1 p-4 hover:shadow-md transition-shadow bg-white border-gray-200">
-                            <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <span className="text-2xl font-bold" style={{ color: '#E52521' }}>
-                                            {ticket.seq}
-                                        </span>
-                                    </div>
-                                </div>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="text-2xl font-bold" style={{ color: '#E52521' }}>
+                                  {ticket.seq}
+                                </span>
+                              </div>
                             </div>
+                          </div>
                         </Card>
                       </div>
                     ))}
@@ -947,7 +1049,7 @@ export default function ConsolePage() {
                       cancelled: { bg: '#fee2e2', text: '#dc2626', label: 'בוטל' },
                       skipped: { bg: '#fef3c7', text: '#d97706', label: 'דולג' }
                     };
-                    const status = statusColors[ticket.state] || { bg: '#e0e7ff', text: '#4338ca', label: ticket.state }; // Fallback for unknown states
+                    const status = statusColors[ticket.state] || { bg: '#e0e7ff', text: '#4338ca', label: ticket.state };
 
                     return (
                       <Card key={ticket.id} className="p-4" style={{ backgroundColor: status.bg }}>
