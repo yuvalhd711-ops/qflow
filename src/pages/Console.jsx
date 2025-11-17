@@ -57,40 +57,27 @@ export default function ConsolePage() {
   const [error, setError] = useState(null);
 
   const loadBranches = useCallback(async () => {
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Timeout')), 3000)
-    );
-
     try {
-      const list = await Promise.race([
-        base44.entities.Branch.list(),
-        timeout
-      ]);
+      const list = await base44.entities.Branch.list(); // Removed Promise.race and timeout
       setBranches(list);
       setError(null); // Clear error on successful load
     } catch (error) {
       console.error("Error loading branches:", error);
-      setError('שגיאה בטעינת נתונים. אנא נסה שוב.');
+      setError(error.message || 'שגיאה בטעינת סניפים. אנא נסה שוב.'); // Generic error message
       setBranches([]);
     }
   }, []);
 
   const loadQueue = useCallback(async () => {
     if (!queue_id) return;
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Timeout')), 3000)
-    );
 
     try {
-      const queueData = await Promise.race([
-        base44.entities.Queue.get(queue_id),
-        timeout
-      ]);
+      const queueData = await base44.entities.Queue.get(queue_id); // Removed Promise.race and timeout
       setQueue(queueData);
       setError(null); // Clear error on successful load
     } catch (error) {
       console.error("Queue not found:", error);
-      setError('שגיאה בטעינת התור. אנא נסה שוב.');
+      setError(error.message || 'שגיאה בטעינת התור. אנא נסה שוב.'); // Generic error message
       setQueue(null);
       const url = createPageUrl("Console") + (branch_id ? `?branch_id=${branch_id}` : '');
       navigate(url);
@@ -100,20 +87,10 @@ export default function ConsolePage() {
   const loadData = useCallback(async () => {
     if (!queue_id) return;
 
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Timeout')), 3000)
-    );
-
     try {
       const [ticketsResult, currentTicketsResult] = await Promise.allSettled([
-        Promise.race([
-          base44.entities.Ticket.filter({ queue_id, state: "waiting" }, "seq"),
-          timeout
-        ]),
-        Promise.race([
-          base44.entities.Ticket.filter({ queue_id }),
-          timeout
-        ])
+        base44.entities.Ticket.filter({ queue_id, state: "waiting" }, "seq"), // Removed Promise.race and timeout
+        base44.entities.Ticket.filter({ queue_id }) // Removed Promise.race and timeout
       ]);
 
       if (ticketsResult.status === 'fulfilled') {
@@ -144,7 +121,7 @@ export default function ConsolePage() {
       setError(null); // Clear error on successful data load
     } catch (error) {
       console.error("Error loading data:", error);
-      setError('שגיאה בטעינת נתוני התור. אנא נסה שוב.');
+      setError(error.message || 'שגיאה בטעינת נתוני התור. אנא נסה שוב.'); // Generic error message
       setWaitingTickets([]);
       setCurrentTicket(null);
       setHistoryTickets([]);
@@ -157,46 +134,76 @@ export default function ConsolePage() {
 
   useEffect(() => {
     const loadDepartments = async () => {
-      const timeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout')), 3000)
-      );
-
+      setLoading(true); // Ensure loading is true at the start of the effect
       try {
-        const userData = await Promise.race([
-          base44.auth.me(),
-          timeout
-        ]);
-        setUser(userData);
+        // If branch_id is in URL, use it directly as the primary filter.
+        let effectiveBranchId = branch_id;
 
-        const filterBranchId = branch_id || userData.branch_id;
+        let userData = null;
+        // Always try to load user in the background. This ensures `user` state is populated
+        // for use elsewhere (e.g., actor_email in events), regardless of how branch_id is determined.
+        try {
+          userData = await base44.auth.me(); // Removed Promise.race and timeout
+          setUser(userData);
+          // If `effectiveBranchId` was not set by URL, use user's default branch.
+          if (!effectiveBranchId && userData?.branch_id) {
+            effectiveBranchId = userData.branch_id;
+          }
+        } catch (authError) {
+          console.error('[Console] Error loading user data:', authError);
+          // If user loading fails AND we don't have a branch_id from the URL,
+          // then we cannot proceed to load departments.
+          if (!effectiveBranchId) {
+            setError(authError.message || 'שגיאה בטעינת פרטי משתמש. אנא נסה שוב.');
+            setActiveDepartments([]);
+            setLoading(false);
+            return; // Exit early if we can't determine a branch_id
+          }
+          // If `effectiveBranchId` *is* present (from URL), we can continue even if user auth fails.
+          // The `user` state will just remain null, or whatever its default is.
+        }
 
-        const allDepts = await Promise.race([
-          base44.entities.BranchDepartmentSetting.list(),
-          timeout
-        ]);
+        if (!effectiveBranchId) {
+          console.log('[Console] No effective branch_id available to load departments.');
+          setError('לא ניתן לטעון מחלקות ללא סניף מוגדר. אנא בחר סניף או פנה למנהל המערכת.'); // Generic error message
+          setActiveDepartments([]);
+          setLoading(false);
+          return;
+        }
 
-        const filteredDepts = allDepts.filter(d =>
-          String(d.branch_id) === String(filterBranchId) && d.is_active === true
-        );
+        console.log(`[Console] Loading departments for branch_id: ${effectiveBranchId}`);
 
+        const allDepts = await base44.entities.BranchDepartmentSetting.list(); // Removed Promise.race and timeout
+        console.log(`[Console] All BranchDepartmentSettings:`, allDepts);
+
+        const filteredDepts = allDepts.filter(d => {
+          const match = String(d.branch_id) === String(effectiveBranchId) && d.is_active === true;
+          console.log(`[Console] Dept "${d.department}" (ID:${d.id}): branch_id=${d.branch_id} (target: ${effectiveBranchId}), isActive=${d.is_active}. Match? ${match}`);
+          return match;
+        });
+
+        console.log(`[Console] Filtered active departments for branch ${effectiveBranchId}:`, filteredDepts);
         setActiveDepartments(filteredDepts);
         setError(null); // Clear error on successful load
       } catch (error) {
         console.error('[Console] Error loading departments:', error);
-        setError('שגיאה בטעינת הגדרות מחלקות. אנא נסה שוב.');
         setActiveDepartments([]);
+        setError(error.message || 'שגיאה כללית בטעינת מחלקות. אנא נסה שוב.'); // Generic error message
+      } finally {
+        setLoading(false); // Ensure loading is set to false in all paths
       }
-
-      setLoading(false);
     };
 
     loadDepartments();
 
+    // Only set interval if branch_id is present, implying a branch has been selected.
+    // If branch_id is null, it means the user is on the branch selection screen,
+    // and we don't need to poll for department changes.
     if (branch_id) {
       const interval = setInterval(loadDepartments, 10000);
       return () => clearInterval(interval);
     }
-  }, [branch_id]);
+  }, [branch_id]); // Dependency only on branch_id from URL.
 
   useEffect(() => {
     if (queue_id) {
@@ -213,7 +220,7 @@ export default function ConsolePage() {
   useBdsSubscription(({ scope, branchId }) => {
     if (scope === "all" || (consoleBranchIdStr && String(branchId) === consoleBranchIdStr)) {
       (async () => {
-        try {
+        try { // Added try-catch block
           const allDepts = await base44.entities.BranchDepartmentSetting.list();
           const filteredDepts = allDepts.filter(d => String(d.branch_id) === String(consoleBranchIdStr) && d.is_active === true);
           setActiveDepartments(filteredDepts);
@@ -222,7 +229,7 @@ export default function ConsolePage() {
           setError(null);
         } catch (e) {
           console.error("Error during BDS subscription update:", e);
-          setError('שגיאה בעדכון נתונים בזמן אמת. אנא רענן.');
+          setError(e.message || 'שגיאה בעדכון נתונים בזמן אמת. אנא רענן.'); // Generic error message
         }
       })();
     }
@@ -256,7 +263,7 @@ export default function ConsolePage() {
     } catch (error) {
       console.error('[Console] Error selecting department:', error);
       alert("שגיאה בטעינת המחלקה. אנא נסה שוב.");
-      setError('שגיאה בבחירת מחלקה. אנא נסה שוב.');
+      setError(error.message || 'שגיאה בבחירת מחלקה. אנא נסה שוב.'); // Generic error message
     }
   };
 
@@ -356,7 +363,7 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error calling next ticket:", e);
-      setError('שגיאה בקריאת התור הבא. אנא נסה שוב.');
+      setError(e.message || 'שגיאה בקריאת התור הבא. אנא נסה שוב.'); // Generic error message
     }
   };
 
@@ -378,7 +385,7 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error recalling ticket:", e);
-      setError('שגיאה בקריאה חוזרת של התור. אנא נסה שוב.');
+      setError(e.message || 'שגיאה בקריאה חוזרת של התור. אנא נסה שוב.'); // Generic error message
     }
   };
 
@@ -416,7 +423,7 @@ export default function ConsolePage() {
       }
     } catch (e) {
       console.error("Error finishing service:", e);
-      setError('שגיאה בסיום שירות. אנא נסה שוב.');
+      setError(e.message || 'שגיאה בסיום שירות. אנא נסה שוב.'); // Generic error message
     }
   };
 
@@ -439,7 +446,7 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error skipping ticket:", e);
-      setError('שגיאה בדילוג על התור. אנא נסה שוב.');
+      setError(e.message || 'שגיאה בדילוג על התור. אנא נסה שוב.'); // Generic error message
     }
   };
 
@@ -463,7 +470,7 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error handling customer left:", e);
-      setError('שגיאה בביטול התור. אנא נסה שוב.');
+      setError(e.message || 'שגיאה בביטול התור. אנא נסה שוב.'); // Generic error message
     }
   };
 
@@ -489,7 +496,7 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error requeueing ticket:", e);
-      setError('שגיאה בהחזרת התור. אנא נסה שוב.');
+      setError(e.message || 'שגיאה בהחזרת התור. אנא נסה שוב.'); // Generic error message
     }
   };
 
@@ -540,7 +547,7 @@ export default function ConsolePage() {
       setError(null);
     } catch (e) {
       console.error("Error transferring ticket:", e);
-      setError('שגיאה בהעברת התור. אנא נסה שוב.');
+      setError(e.message || 'שגיאה בהעברת התור. אנא נסה שוב.'); // Generic error message
     }
   };
 
@@ -577,7 +584,7 @@ export default function ConsolePage() {
       console.error("Error searching ticket:", error);
       setSearchMessage("שגיאה בחיפוש התור");
       setFoundTicket(null);
-      setError('שגיאה בחיפוש התור. אנא נסה שוב.');
+      setError(error.message || 'שגיאה בחיפוש התור. אנא נסה שוב.'); // Generic error message
     }
   };
 
@@ -625,7 +632,7 @@ export default function ConsolePage() {
     } catch (error) {
       console.error("Error promoting ticket:", error);
       alert("שגיאה בקידום התור");
-      setError('שגיאה בקידום התור. אנא נסה שוב.');
+      setError(error.message || 'שגיאה בקידום התור. אנא נסה שוב.'); // Generic error message
     }
   };
 
@@ -756,8 +763,18 @@ export default function ConsolePage() {
               <CardContent className="p-12 text-center">
                 <p className="text-2xl font-bold mb-4" style={{ color: '#1F5F25' }}>אין מחלקות פעילות כרגע</p>
                 <p className="text-gray-600 mb-4">אנא פנה למנהל המערכת</p>
-                <p className="text-sm text-gray-500">branch_id: {branch_id || user?.branch_id}</p>
-                <p className="text-sm text-gray-500">מחלקות שנמצאו: {activeDepartments.length}</p>
+                <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-2">מידע לדיבוג:</p>
+                  <p className="text-sm text-gray-500">branch_id: {branch_id || user?.branch_id}</p>
+                  <p className="text-sm text-gray-500">מחלקות שנמצאו: {activeDepartments.length}</p>
+                  <Button
+                    onClick={() => window.location.href = createPageUrl("Admin")}
+                    className="mt-4 text-white"
+                    style={{ backgroundColor: '#41B649' }}
+                  >
+                    עבור לעמוד ניהול מערכת
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
