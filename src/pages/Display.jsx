@@ -216,8 +216,11 @@ export default function DisplayPage() {
 
   // Show audio prompt only if announce=1 and not yet enabled
   useEffect(() => {
-    if (shouldAnnounce && !audioEnabled && !isInitialLoad.current) {
-      setShowAudioPrompt(true);
+    if (shouldAnnounce && !audioEnabled) {
+      const timer = setTimeout(() => {
+        setShowAudioPrompt(true);
+      }, 1000);
+      return () => clearTimeout(timer);
     }
   }, [shouldAnnounce, audioEnabled]);
 
