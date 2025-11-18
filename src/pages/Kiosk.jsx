@@ -541,7 +541,7 @@ export default function KioskPage() {
                       style={{ mixBlendMode: 'normal', opacity: 1 }}
                     />
                   </div>
-                  קבלת מספר באסמס
+                  קבלת מספר בSMS
                 </Button>
               </motion.div>
             )}
@@ -595,7 +595,7 @@ export default function KioskPage() {
         <DialogContent dir="rtl" className="bg-white max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-3xl text-center" style={{ color: '#111111' }}>
-              קבלת מספר באסמס
+              קבלת מספר בSMS
             </DialogTitle>
           </DialogHeader>
           <div className="py-8 space-y-6">
