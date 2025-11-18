@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
@@ -704,6 +703,17 @@ export default function ConsolePage() {
             <p className="text-gray-600">קונסולת עובד</p>
           </div>
           <div className="flex gap-2">
+            <Button
+              onClick={() => {
+                const url = createPageUrl("Console") + (branch_id ? `?branch_id=${branch_id}` : '');
+                navigate(url);
+              }}
+              variant="outline"
+              className="gap-2"
+              style={{ borderColor: '#41B649', color: '#41B649' }}
+            >
+              ← יציאה למחלקות
+            </Button>
             <Button
               onClick={() => setOnBreak(!onBreak)}
               variant={onBreak ? "default" : "outline"}

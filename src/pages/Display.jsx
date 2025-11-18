@@ -88,7 +88,7 @@ export default function DisplayPage() {
 
   // Listen for ticket call broadcasts from Console
   useEffect(() => {
-    if (!shouldAnnounce) return;
+    if (!shouldAnnounce || !audioEnabled) return;
 
     const onStorage = (e) => {
       if (e.key === "ticket_call_event" && e.newValue) {
@@ -102,9 +102,26 @@ export default function DisplayPage() {
       }
     };
 
+    // Also check localStorage periodically for same-tab updates
+    const checkInterval = setInterval(() => {
+      try {
+        const stored = localStorage.getItem("ticket_call_event");
+        if (stored) {
+          const data = JSON.parse(stored);
+          const now = Date.now();
+          if (now - data.ts < 2000) { // Within last 2 seconds
+            speakHebrewTicket(data.ticketSeq, data.queueName);
+          }
+        }
+      } catch (e) {}
+    }, 500);
+
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [shouldAnnounce, speakHebrewTicket]);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      clearInterval(checkInterval);
+    };
+  }, [shouldAnnounce, audioEnabled, speakHebrewTicket]);
 
   const loadAllQueuesData = useCallback(
     async (depts) => {

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
@@ -28,7 +27,9 @@ export default function KioskPage() {
   const [newTicket, setNewTicket] = useState(null);
   const [loading, setLoading] = useState(true);
   const [branches, setBranches] = useState([]);
-  const [showClubModal, setShowClubModal] = useState(false);
+  const [showSmsModal, setShowSmsModal] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [joinClub, setJoinClub] = useState(false);
   const [showSmsConfirmation, setShowSmsConfirmation] = useState(false);
   const [error, setError] = useState(null);
   const printIframeRef = useRef(null);
@@ -280,12 +281,19 @@ export default function KioskPage() {
   };
 
   const handleSmsChoice = () => {
-    setShowClubModal(true);
+    setPhoneNumber("");
+    setJoinClub(false);
+    setShowSmsModal(true);
   };
 
   const createTicketWithSms = async () => {
+    if (!phoneNumber || phoneNumber.length < 9) {
+      alert("אנא הזן מספר טלפון תקין");
+      return;
+    }
+
     setIsCreating(true);
-    setShowClubModal(false);
+    setShowSmsModal(false);
     
     try {
       const currentQueue = await base44.entities.Queue.get(queue_id);
@@ -298,8 +306,8 @@ export default function KioskPage() {
         seq: newSeq,
         state: "waiting",
         source: "kiosk",
-        customer_phone: null,
-        join_club: true
+        customer_phone: phoneNumber,
+        join_club: joinClub
       });
 
       await base44.entities.TicketEvent.create({
@@ -533,7 +541,7 @@ export default function KioskPage() {
                       style={{ mixBlendMode: 'normal', opacity: 1 }}
                     />
                   </div>
-                  קבלת מספר ו-SMS
+                  קבלת מספר באסמס
                 </Button>
               </motion.div>
             )}
@@ -563,9 +571,16 @@ export default function KioskPage() {
                       נוצר: {new Date(newTicket.created_date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
                     </div>
                     {showSmsConfirmation && (
-                      <div className="flex items-center justify-center gap-2 mt-4 rounded-lg p-4" style={{ backgroundColor: '#E6F9EA', color: '#41B649' }}>
-                        <Star className="w-6 h-6" style={{ fill: '#41B649' }} />
-                        <span className="text-xl font-bold">ברגעים אלו נשלחה אליכם הודעה להרשמה למועדון שוק העיר</span>
+                      <div className="space-y-3 mt-4">
+                        <div className="flex items-center justify-center gap-2 rounded-lg p-4" style={{ backgroundColor: '#E6F9EA', color: '#41B649' }}>
+                          <Star className="w-6 h-6" style={{ fill: '#41B649' }} />
+                          <span className="text-xl font-bold">ברגעים אלו נשלחת אליך הודעת SMS!</span>
+                        </div>
+                        {newTicket?.join_club && (
+                          <div className="text-center text-lg text-gray-600 bg-green-50 p-3 rounded-lg">
+                            תקבל גם קישור להרשמה למועדון שוק העיר 🎁
+                          </div>
+                        )}
                       </div>
                     )}
                   </CardContent>
@@ -576,30 +591,55 @@ export default function KioskPage() {
         </div>
       </div>
 
-      <Dialog open={showClubModal} onOpenChange={setShowClubModal}>
+      <Dialog open={showSmsModal} onOpenChange={setShowSmsModal}>
         <DialogContent dir="rtl" className="bg-white max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-3xl text-center" style={{ color: '#111111' }}>
-              להרשמה חינם למועדון שוק העיר
+              קבלת מספר באסמס
             </DialogTitle>
           </DialogHeader>
-          <div className="py-8 text-center">
-            <img 
-              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68dbe1252279022b9e191013/8866f21c5_SHuk_LOGO_HAYIR.png"
-              alt="שוק העיר"
-              className="h-24 w-auto mx-auto mb-6"
-            />
-            <p className="text-2xl text-gray-700 mb-4">
-              קבל הנחות והטבות בכל ביקור!
-            </p>
-            <p className="text-xl text-gray-600">
-              נשלח לך הודעת SMS עם קישור להשלמת ההרשמה
-            </p>
+          <div className="py-8 space-y-6">
+            <div>
+              <label className="text-xl font-bold block mb-3" style={{ color: '#111111' }}>
+                מספר טלפון נייד:
+              </label>
+              <input
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
+                placeholder="05X-XXXXXXX"
+                className="w-full text-2xl p-4 border-2 rounded-lg text-center"
+                style={{ borderColor: '#41B649' }}
+                maxLength="10"
+                dir="ltr"
+              />
+            </div>
+
+            <div className="bg-green-50 p-6 rounded-lg border-2" style={{ borderColor: '#41B649' }}>
+              <div className="flex items-start gap-4">
+                <input
+                  type="checkbox"
+                  id="joinClub"
+                  checked={joinClub}
+                  onChange={(e) => setJoinClub(e.target.checked)}
+                  className="w-6 h-6 mt-1"
+                  style={{ accentColor: '#41B649' }}
+                />
+                <label htmlFor="joinClub" className="text-xl cursor-pointer flex-1">
+                  <div className="font-bold mb-2" style={{ color: '#111111' }}>
+                    להרשמה חינם למועדון שוק העיר 🌟
+                  </div>
+                  <div className="text-lg text-gray-700">
+                    קבל הנחות והטבות בכל ביקור! נשלח לך SMS עם קישור להשלמת ההרשמה
+                  </div>
+                </label>
+              </div>
+            </div>
           </div>
           <DialogFooter className="flex gap-3">
             <Button
               variant="outline"
-              onClick={() => setShowClubModal(false)}
+              onClick={() => setShowSmsModal(false)}
               className="flex-1 text-xl h-16"
               style={{ borderColor: '#E52521', color: '#E52521' }}
             >
@@ -607,13 +647,13 @@ export default function KioskPage() {
             </Button>
             <Button
               onClick={createTicketWithSms}
-              disabled={isCreating}
+              disabled={isCreating || !phoneNumber || phoneNumber.length < 9}
               className="flex-1 text-xl h-16 text-white hover:opacity-90"
               style={{ backgroundColor: '#41B649' }}
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1F5F25'}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#41B649'}
             >
-              {isCreating ? "יוצר..." : "כן, אני רוצה להירשם"}
+              {isCreating ? "יוצר..." : "אישור"}
             </Button>
           </DialogFooter>
         </DialogContent>
