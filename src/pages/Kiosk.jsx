@@ -32,7 +32,6 @@ export default function KioskPage() {
   const [joinClub, setJoinClub] = useState(false);
   const [showSmsConfirmation, setShowSmsConfirmation] = useState(false);
   const [error, setError] = useState(null);
-  const printIframeRef = useRef(null);
 
   const loadDepartments = useCallback(async () => {
     if (!branch_id) {
@@ -115,120 +114,80 @@ export default function KioskPage() {
     }
   }, [queue_id, loadQueue]);
 
-  // Auto-print using hidden iframe - NO about:blank
+  // ESC/POS thermal printing
   useEffect(() => {
     if (!newTicket || !queue) return;
 
-    const printTicket = () => {
-      const ticketNumber = String(newTicket.seq).padStart(3, "0");
-      
-      const printContent = `
-        <!DOCTYPE html>
-        <html dir="rtl">
-        <head>
-          <meta charset="utf-8">
-          <title>כרטיס תור</title>
-          <style>
-            @media print {
-              @page { margin: 0; size: 80mm auto; }
-              body { margin: 0; }
-            }
-            body {
-              font-family: Arial, sans-serif;
-              text-align: center;
-              padding: 20px;
-              direction: rtl;
-              color: #333;
-            }
-            .header {
-              font-size: 24px;
-              font-weight: bold;
-              margin-bottom: 10px;
-              color: #1e40af;
-            }
-            .ticket-code {
-              font-size: 72px;
-              font-weight: bold;
-              margin: 30px 0;
-              color: #000;
-              border: 4px solid #1e40af;
-              padding: 20px;
-              border-radius: 10px;
-            }
-            .info {
-              font-size: 18px;
-              margin: 10px 0;
-              color: #374151;
-            }
-            .footer {
-              margin-top: 30px;
-              font-size: 14px;
-              color: #6b7280;
-              border-top: 2px dashed #d1d5db;
-              padding-top: 15px;
-            }
-            .barcode {
-              margin: 20px 0;
-              font-family: 'Courier New', monospace;
-              font-size: 20px;
-              letter-spacing: 4px;
-            }
-          </style>
-        </head>
-        <body onload="window.print();">
-          <div class="header">${queue.name}</div>
-          <div class="ticket-code">${ticketNumber}</div>
-          <div class="info">מספר תור שלך</div>
-          <div class="info">נוצר: ${new Date(newTicket.created_date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</div>
-          <div class="barcode">|||  ${ticketNumber}  |||</div>
-          <div class="footer">
-            <div>אנא המתן עד שיקראו למספר שלך</div>
-            <div>תודה על הסבלנות!</div>
-          </div>
-        </body>
-        </html>
-      `;
+    const printToThermal = async () => {
+      try {
+        const ticketNumber = String(newTicket.seq).padStart(3, "0");
+        const createdTime = new Date(newTicket.created_date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
 
-      // Remove old iframe if exists
-      if (printIframeRef.current) {
-        try {
-          document.body.removeChild(printIframeRef.current);
-        } catch (e) {
-          console.warn("Failed to remove old iframe:", e);
-        }
-      }
+        // ESC/POS commands
+        const ESC = '\x1B';
+        const GS = '\x1D';
+        const LF = '\x0A';
 
-      // Create completely hidden iframe
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.top = '-10000px';
-      iframe.style.left = '-10000px';
-      iframe.style.width = '1px';
-      iframe.style.height = '1px';
-      iframe.style.opacity = '0';
-      iframe.style.border = 'none';
-      document.body.appendChild(iframe);
-      printIframeRef.current = iframe;
+        let commands = '';
 
-      const iframeDoc = iframe.contentWindow.document;
-      iframeDoc.open();
-      iframeDoc.write(printContent);
-      iframeDoc.close();
+        // Initialize printer
+        commands += ESC + '@';
 
-      // Cleanup after print
-      setTimeout(() => {
-        if (printIframeRef.current) {
-          try {
-            document.body.removeChild(printIframeRef.current);
-            printIframeRef.current = null;
-          } catch (e) {
-            console.warn("Failed to remove iframe after print:", e);
+        // Set alignment to center
+        commands += ESC + 'a' + '\x01';
+
+        // Print queue name (bold, double height)
+        commands += ESC + '!' + '\x30'; // Bold + Double height
+        commands += queue.name + LF + LF;
+
+        // Print ticket number (HUGE)
+        commands += ESC + '!' + '\x38'; // Bold + Double width + Double height
+        commands += ticketNumber + LF + LF;
+
+        // Reset to normal
+        commands += ESC + '!' + '\x00';
+
+        // Print "מספר תור שלך"
+        commands += 'מספר תור שלך' + LF;
+
+        // Print creation time
+        commands += 'נוצר: ' + createdTime + LF + LF;
+
+        // Print barcode representation
+        commands += '|||  ' + ticketNumber + '  |||' + LF + LF;
+
+        // Print separator line
+        commands += '--------------------------------' + LF;
+
+        // Print footer
+        commands += 'אנא המתן עד שיקראו למספר שלך' + LF;
+        commands += 'תודה על הסבלנות!' + LF + LF + LF;
+
+        // Cut paper
+        commands += GS + 'V' + '\x00';
+
+        // Send to RawBT printer
+        if (window.RawBT && window.RawBT.write) {
+          // Convert string to byte array
+          const bytes = new Uint8Array(commands.length);
+          for (let i = 0; i < commands.length; i++) {
+            bytes[i] = commands.charCodeAt(i);
           }
+
+          window.RawBT.write(
+            bytes,
+            () => console.log('Print success'),
+            (error) => console.error('Print error:', error)
+          );
+        } else {
+          console.warn('RawBT not available - printing skipped');
         }
-      }, 2000);
+      } catch (error) {
+        console.error('Error printing ticket:', error);
+      }
     };
 
-    const timer = setTimeout(printTicket, 300);
+    const timer = setTimeout(printToThermal, 300);
     return () => clearTimeout(timer);
   }, [newTicket, queue]);
 
