@@ -115,187 +115,117 @@ export default function KioskPage() {
     }
   }, [queue_id, loadQueue]);
 
-  // Auto-print: RawBT for Android tablets, PDF fallback for desktop
+  // Auto-print using hidden iframe - NO about:blank
   useEffect(() => {
     if (!newTicket || !queue) return;
 
-    const printTicket = async () => {
-      try {
-        const ticketNumber = String(newTicket.seq).padStart(3, "0");
-        const createdTime = new Date(newTicket.created_date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-
-        console.log('=== PRINT ATTEMPT ===');
-        console.log('Ticket:', ticketNumber);
-        console.log('Queue:', queue.name);
-        console.log('RawBT available:', !!window.RawBT);
-        console.log('RawBT.write available:', !!(window.RawBT && window.RawBT.write));
-
-        // Try RawBT first (for Android tablets)
-        if (window.RawBT && typeof window.RawBT.write === 'function') {
-          console.log('Using RawBT ESC/POS printing...');
-
-          // ESC/POS commands
-          const ESC = '\x1B';
-          const GS = '\x1D';
-          const LF = '\x0A';
-
-          let commands = '';
-
-          // Initialize printer
-          commands += ESC + '@';
-
-          // Set alignment to center
-          commands += ESC + 'a' + '\x01';
-
-          // Print queue name (bold, double height)
-          commands += ESC + '!' + '\x30';
-          commands += queue.name + LF + LF;
-
-          // Print ticket number (HUGE)
-          commands += ESC + '!' + '\x38';
-          commands += ticketNumber + LF + LF;
-
-          // Reset to normal
-          commands += ESC + '!' + '\x00';
-
-          // Print info
-          commands += 'מספר תור שלך' + LF;
-          commands += 'נוצר: ' + createdTime + LF + LF;
-          commands += '|||  ' + ticketNumber + '  |||' + LF + LF;
-          commands += '--------------------------------' + LF;
-          commands += 'אנא המתן עד שיקראו למספר שלך' + LF;
-          commands += 'תודה על הסבלנות!' + LF + LF + LF;
-
-          // Cut paper
-          commands += GS + 'V' + '\x00';
-
-          console.log('Sending ESC/POS commands, length:', commands.length);
-
-          // Convert to byte array
-          const bytes = new Uint8Array(commands.length);
-          for (let i = 0; i < commands.length; i++) {
-            bytes[i] = commands.charCodeAt(i);
-          }
-
-          window.RawBT.write(
-            bytes,
-            () => {
-              console.log('✓ RawBT print SUCCESS');
-            },
-            (error) => {
-              console.error('✗ RawBT print ERROR:', error);
+    const printTicket = () => {
+      const ticketNumber = String(newTicket.seq).padStart(3, "0");
+      
+      const printContent = `
+        <!DOCTYPE html>
+        <html dir="rtl">
+        <head>
+          <meta charset="utf-8">
+          <title>כרטיס תור</title>
+          <style>
+            @media print {
+              @page { margin: 0; size: 80mm auto; }
+              body { margin: 0; }
             }
-          );
-        } else {
-          // Fallback to PDF/iframe for desktop
-          console.log('RawBT not available, using PDF fallback...');
-
-          const printContent = `
-            <!DOCTYPE html>
-            <html dir="rtl">
-            <head>
-              <meta charset="utf-8">
-              <title>כרטיס תור</title>
-              <style>
-                @media print {
-                  @page { margin: 0; size: 80mm auto; }
-                  body { margin: 0; }
-                }
-                body {
-                  font-family: Arial, sans-serif;
-                  text-align: center;
-                  padding: 20px;
-                  direction: rtl;
-                  color: #333;
-                }
-                .header {
-                  font-size: 24px;
-                  font-weight: bold;
-                  margin-bottom: 10px;
-                  color: #1e40af;
-                }
-                .ticket-code {
-                  font-size: 72px;
-                  font-weight: bold;
-                  margin: 30px 0;
-                  color: #000;
-                  border: 4px solid #1e40af;
-                  padding: 20px;
-                  border-radius: 10px;
-                }
-                .info {
-                  font-size: 18px;
-                  margin: 10px 0;
-                  color: #374151;
-                }
-                .footer {
-                  margin-top: 30px;
-                  font-size: 14px;
-                  color: #6b7280;
-                  border-top: 2px dashed #d1d5db;
-                  padding-top: 15px;
-                }
-                .barcode {
-                  margin: 20px 0;
-                  font-family: 'Courier New', monospace;
-                  font-size: 20px;
-                  letter-spacing: 4px;
-                }
-              </style>
-            </head>
-            <body onload="window.print();">
-              <div class="header">${queue.name}</div>
-              <div class="ticket-code">${ticketNumber}</div>
-              <div class="info">מספר תור שלך</div>
-              <div class="info">נוצר: ${createdTime}</div>
-              <div class="barcode">|||  ${ticketNumber}  |||</div>
-              <div class="footer">
-                <div>אנא המתן עד שיקראו למספר שלך</div>
-                <div>תודה על הסבלנות!</div>
-              </div>
-            </body>
-            </html>
-          `;
-
-          // Clean old iframe
-          if (printIframeRef.current) {
-            try {
-              document.body.removeChild(printIframeRef.current);
-            } catch (e) {}
-          }
-
-          // Create hidden iframe
-          const iframe = document.createElement('iframe');
-          iframe.style.position = 'fixed';
-          iframe.style.top = '-10000px';
-          iframe.style.left = '-10000px';
-          iframe.style.width = '1px';
-          iframe.style.height = '1px';
-          iframe.style.opacity = '0';
-          iframe.style.border = 'none';
-          document.body.appendChild(iframe);
-          printIframeRef.current = iframe;
-
-          const iframeDoc = iframe.contentWindow.document;
-          iframeDoc.open();
-          iframeDoc.write(printContent);
-          iframeDoc.close();
-
-          console.log('✓ PDF iframe created, print dialog should open');
-
-          // Cleanup
-          setTimeout(() => {
-            if (printIframeRef.current) {
-              try {
-                document.body.removeChild(printIframeRef.current);
-                printIframeRef.current = null;
-              } catch (e) {}
+            body {
+              font-family: Arial, sans-serif;
+              text-align: center;
+              padding: 20px;
+              direction: rtl;
+              color: #333;
             }
-          }, 2000);
+            .header {
+              font-size: 24px;
+              font-weight: bold;
+              margin-bottom: 10px;
+              color: #1e40af;
+            }
+            .ticket-code {
+              font-size: 72px;
+              font-weight: bold;
+              margin: 30px 0;
+              color: #000;
+              border: 4px solid #1e40af;
+              padding: 20px;
+              border-radius: 10px;
+            }
+            .info {
+              font-size: 18px;
+              margin: 10px 0;
+              color: #374151;
+            }
+            .footer {
+              margin-top: 30px;
+              font-size: 14px;
+              color: #6b7280;
+              border-top: 2px dashed #d1d5db;
+              padding-top: 15px;
+            }
+            .barcode {
+              margin: 20px 0;
+              font-family: 'Courier New', monospace;
+              font-size: 20px;
+              letter-spacing: 4px;
+            }
+          </style>
+        </head>
+        <body onload="window.print();">
+          <div class="header">${queue.name}</div>
+          <div class="ticket-code">${ticketNumber}</div>
+          <div class="info">מספר תור שלך</div>
+          <div class="info">נוצר: ${new Date(newTicket.created_date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</div>
+          <div class="barcode">|||  ${ticketNumber}  |||</div>
+          <div class="footer">
+            <div>אנא המתן עד שיקראו למספר שלך</div>
+            <div>תודה על הסבלנות!</div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      // Remove old iframe if exists
+      if (printIframeRef.current) {
+        try {
+          document.body.removeChild(printIframeRef.current);
+        } catch (e) {
+          console.warn("Failed to remove old iframe:", e);
         }
-      } catch (error) {
-        console.error('✗ Print failed with error:', error);
       }
+
+      // Create completely hidden iframe
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.top = '-10000px';
+      iframe.style.left = '-10000px';
+      iframe.style.width = '1px';
+      iframe.style.height = '1px';
+      iframe.style.opacity = '0';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+      printIframeRef.current = iframe;
+
+      const iframeDoc = iframe.contentWindow.document;
+      iframeDoc.open();
+      iframeDoc.write(printContent);
+      iframeDoc.close();
+
+      // Cleanup after print
+      setTimeout(() => {
+        if (printIframeRef.current) {
+          try {
+            document.body.removeChild(printIframeRef.current);
+            printIframeRef.current = null;
+          } catch (e) {
+            console.warn("Failed to remove iframe after print:", e);
+          }
+        }
+      }, 2000);
     };
 
     const timer = setTimeout(printTicket, 300);
