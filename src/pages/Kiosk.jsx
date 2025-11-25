@@ -374,30 +374,33 @@ export default function KioskPage() {
     if (isCreating) return; // Prevent double-clicks
     setIsCreating(true);
     setShowSmsModal(false);
-    setNewTicket(null); // Clear any previous ticket first
+    setShowTicketCard(false); // Hide any previous ticket
     
     try {
-      const { ticket } = await createNewTicket(phoneNumber, joinClub);
-      const seqNumber = ticket.seq;
+      const { seq, createdTime } = await createNewTicket(phoneNumber, joinClub);
       
-      console.log("[Kiosk] *** DISPLAY SEQ (SMS):", seqNumber, "***");
+      console.log("[Kiosk] *** DISPLAYING AND PRINTING SEQ (SMS):", seq, "***");
       
-      // Set ticket with unique key to force React re-render
-      setNewTicket({
-        id: ticket.id,
-        seq: seqNumber,
-        created_date: ticket.created_date,
-        join_club: joinClub,
-        _key: Date.now() // Force new object identity
-      });
+      // Update display state with the seq number directly
+      setDisplayedTicketSeq(seq);
+      setDisplayedTicketTime(createdTime);
+      setShowTicketCard(true);
       setShowSmsConfirmation(true);
       
+      // Print immediately with the seq number
+      setTimeout(() => {
+        printTicketNow(seq, createdTime);
+      }, 300);
+      
+      // Hide SMS confirmation after 4 seconds
       setTimeout(() => {
         setShowSmsConfirmation(false);
       }, 4000);
       
+      // Hide ticket card after 4 seconds
       setTimeout(() => {
-        setNewTicket(null);
+        setShowTicketCard(false);
+        setDisplayedTicketSeq(null);
       }, 4000);
     } catch (error) {
       console.error("Error creating ticket:", error);
