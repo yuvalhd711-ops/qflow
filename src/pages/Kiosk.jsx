@@ -266,33 +266,43 @@ export default function KioskPage() {
     });
   };
 
+  // Shared function to create a new ticket - used by both regular and SMS flows
+  const createNewTicket = async (customerPhone = null, shouldJoinClub = false) => {
+    // ALWAYS fetch fresh queue data from DB to get the LATEST seq_counter
+    const freshQueue = await base44.entities.Queue.get(queue_id);
+    const newSeq = (freshQueue.seq_counter || 0) + 1;
+
+    // Update queue counter in DB FIRST
+    await base44.entities.Queue.update(queue_id, { seq_counter: newSeq });
+
+    // Create ticket with new seq
+    const ticket = await base44.entities.Ticket.create({
+      queue_id,
+      seq: newSeq,
+      state: "waiting",
+      source: "kiosk",
+      customer_phone: customerPhone,
+      join_club: shouldJoinClub
+    });
+
+    await base44.entities.TicketEvent.create({
+      ticket_id: ticket.id,
+      event_type: "created",
+      actor_role: "customer"
+    });
+
+    // Update local queue state with new counter
+    setQueue({ ...freshQueue, seq_counter: newSeq });
+
+    return { ticket: { ...ticket, seq: newSeq }, queue: freshQueue };
+  };
+
   const createRegularTicket = async () => {
     setIsCreating(true);
     try {
-      const currentQueue = await base44.entities.Queue.get(queue_id);
-      const newSeq = (currentQueue.seq_counter || 0) + 1;
-
-      await base44.entities.Queue.update(queue_id, { seq_counter: newSeq });
-
-      const ticket = await base44.entities.Ticket.create({
-        queue_id,
-        seq: newSeq,
-        state: "waiting",
-        source: "kiosk",
-        customer_phone: null,
-        join_club: false
-      });
-
-      await base44.entities.TicketEvent.create({
-        ticket_id: ticket.id,
-        event_type: "created",
-        actor_role: "customer"
-      });
-
-      // Update local queue state with new counter
-      setQueue({ ...currentQueue, seq_counter: newSeq });
+      const { ticket, queue: freshQueue } = await createNewTicket(null, false);
       
-      setNewTicket({ ...ticket, queue: currentQueue });
+      setNewTicket({ ...ticket, queue: freshQueue });
       
       setTimeout(() => {
         setNewTicket(null);
@@ -320,34 +330,9 @@ export default function KioskPage() {
     setShowSmsModal(false);
     
     try {
-      // Fetch FRESH queue data to get the LATEST seq_counter from DB
-      const freshQueue = await base44.entities.Queue.get(queue_id);
-      const newSeq = (freshQueue.seq_counter || 0) + 1;
-
-      // Update queue counter in DB FIRST
-      await base44.entities.Queue.update(queue_id, { seq_counter: newSeq });
-
-      // Create ticket with new seq
-      const ticket = await base44.entities.Ticket.create({
-        queue_id,
-        seq: newSeq,
-        state: "waiting",
-        source: "kiosk",
-        customer_phone: phoneNumber,
-        join_club: joinClub
-      });
-
-      await base44.entities.TicketEvent.create({
-        ticket_id: ticket.id,
-        event_type: "created",
-        actor_role: "customer"
-      });
-
-      // Update local queue state with new counter
-      setQueue({ ...freshQueue, seq_counter: newSeq });
+      const { ticket, queue: freshQueue } = await createNewTicket(phoneNumber, joinClub);
       
-      // Set ticket with fresh queue data for printing
-      setNewTicket({ ...ticket, seq: newSeq, queue: freshQueue });
+      setNewTicket({ ...ticket, queue: freshQueue });
       setShowSmsConfirmation(true);
       
       setTimeout(() => {
