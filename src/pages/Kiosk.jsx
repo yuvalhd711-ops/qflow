@@ -588,7 +588,7 @@ export default function KioskPage() {
 
         <div className="max-w-6xl mx-auto">
           <AnimatePresence mode="wait">
-            {!newTicket && (
+            {!showTicketCard && (
               <motion.div
                 key="choices"
                 initial={{ scale: 0.9, opacity: 0 }}
@@ -636,9 +636,9 @@ export default function KioskPage() {
               </motion.div>
             )}
 
-            {newTicket && (
+            {showTicketCard && displayedTicketSeq !== null && (
               <motion.div
-                key="ticket"
+                key={`ticket-${displayedTicketSeq}`}
                 initial={{ scale: 0.8, opacity: 0, y: 50 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.8, opacity: 0, y: -50 }}
@@ -656,19 +656,21 @@ export default function KioskPage() {
                     </motion.div>
                     <h2 className="text-3xl font-bold mb-4" style={{ color: '#111111' }}>המספר שלך</h2>
                     <div className="text-9xl font-bold mb-6" style={{ color: '#E52521' }}>
-                      {newTicket?.seq || "---"}
+                      {displayedTicketSeq}
                     </div>
                     <div className="info text-2xl" style={{ color: '#111111' }}>מספר תור שלך</div>
-                    <div className="text-lg text-gray-600 mt-4 rounded-lg p-3" style={{ backgroundColor: '#E6F9EA' }}>
-                      נוצר: {new Date(newTicket.created_date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
-                    </div>
+                    {displayedTicketTime && (
+                      <div className="text-lg text-gray-600 mt-4 rounded-lg p-3" style={{ backgroundColor: '#E6F9EA' }}>
+                        נוצר: {new Date(displayedTicketTime).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
                     {showSmsConfirmation && (
                       <div className="space-y-3 mt-4">
                         <div className="flex items-center justify-center gap-2 rounded-lg p-4" style={{ backgroundColor: '#E6F9EA', color: '#41B649' }}>
                           <Star className="w-6 h-6" style={{ fill: '#41B649' }} />
                           <span className="text-xl font-bold">ברגעים אלו נשלחת אליך הודעת SMS!</span>
                         </div>
-                        {newTicket?.join_club && (
+                        {joinClub && (
                           <div className="text-center text-lg text-gray-600 bg-green-50 p-3 rounded-lg">
                             תקבל גם קישור להרשמה למועדון שוק העיר 🎁
                           </div>
