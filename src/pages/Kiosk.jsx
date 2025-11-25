@@ -116,11 +116,17 @@ export default function KioskPage() {
   }, [queue_id, loadQueue]);
 
   // Auto-print using hidden iframe - NO about:blank
+  // CRITICAL: This effect runs when newTicket changes
+  // The seq comes directly from newTicket.seq which was set from server response
   useEffect(() => {
     if (!newTicket || !queue) return;
 
+    const seqToPrint = newTicket.seq;
+    console.log("[Kiosk] PRINT EFFECT TRIGGERED - seq to print:", seqToPrint);
+    
     const printTicket = () => {
-      const ticketNumber = String(newTicket.seq).padStart(3, "0");
+      const ticketNumber = String(seqToPrint).padStart(3, "0");
+      console.log("[Kiosk] Printing ticket number:", ticketNumber);
       
       const printContent = `
         <!DOCTYPE html>
