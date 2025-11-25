@@ -118,149 +118,139 @@ export default function KioskPage() {
     }
   }, [queue_id, loadQueue]);
 
-  // Auto-print using hidden iframe - NO about:blank
-  // CRITICAL: This effect runs when newTicket changes
-  // The seq comes directly from newTicket.seq which was set from server response
-  useEffect(() => {
-    if (!newTicket || !queue) return;
-
-    const seqToPrint = newTicket.seq;
-    console.log("[Kiosk] PRINT EFFECT TRIGGERED - seq to print:", seqToPrint);
+  // Print function - called directly with the seq number, not dependent on state
+  const printTicketNow = useCallback((seqNumber, createdTime) => {
+    if (!queue) return;
     
-    const printTicket = () => {
-      const ticketNumber = String(seqToPrint).padStart(3, "0");
-      console.log("[Kiosk] Printing ticket number:", ticketNumber);
-      
-      const printContent = `
-        <!DOCTYPE html>
-        <html dir="rtl">
-        <head>
-          <meta charset="utf-8">
-          <title>כרטיס תור</title>
-          <style>
-            @media print {
-              @page { 
-                margin: 2mm !important;
-                size: 80mm auto !important;
-              }
+    const ticketNumber = String(seqNumber).padStart(3, "0");
+    console.log("[Kiosk] PRINTING TICKET:", ticketNumber);
+    
+    const printContent = `
+      <!DOCTYPE html>
+      <html dir="rtl">
+      <head>
+        <meta charset="utf-8">
+        <title>כרטיס תור</title>
+        <style>
+          @media print {
+            @page { 
+              margin: 2mm !important;
+              size: 80mm auto !important;
             }
-            * {
-              box-sizing: border-box;
-              margin: 0;
-              padding: 0;
-            }
-            html, body {
-              width: 100%;
-              margin: 0;
-              padding: 0;
-            }
-            body {
-              font-family: Arial, sans-serif;
-              text-align: center;
-              direction: rtl;
-              color: #333;
-            }
-            .container {
-              width: 60mm;
-              max-width: 60mm;
-              margin: 0 auto;
-              padding: 3mm;
-            }
-            .header {
-              font-size: 16px;
-              font-weight: bold;
-              margin-bottom: 5px;
-              color: #000;
-            }
-            .ticket-code {
-              font-size: 48px;
-              font-weight: bold;
-              margin: 8px auto;
-              color: #000;
-              border: 2px solid #000;
-              padding: 8px 5px;
-              border-radius: 5px;
-              width: 50mm;
-              max-width: 50mm;
-            }
-            .info {
-              font-size: 11px;
-              margin: 4px 0;
-              color: #333;
-            }
-            .footer {
-              margin-top: 8px;
-              font-size: 10px;
-              color: #555;
-              border-top: 1px dashed #999;
-              padding-top: 6px;
-            }
-            .barcode {
-              margin: 6px 0;
-              font-family: 'Courier New', monospace;
-              font-size: 12px;
-              letter-spacing: 2px;
-            }
-          </style>
-        </head>
-        <body onload="window.print();">
-          <div class="container">
-            <div class="header">${queue.name}</div>
-            <div class="ticket-code">${ticketNumber}</div>
-            <div class="info">מספר תור שלך</div>
-            <div class="info">נוצר: ${new Date(newTicket.created_date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</div>
-            <div class="barcode">|||  ${ticketNumber}  |||</div>
-            <div class="footer">
-              <div>אנא המתן עד שיקראו למספר שלך</div>
-              <div>תודה על הסבלנות!</div>
-            </div>
+          }
+          * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+          }
+          html, body {
+            width: 100%;
+            margin: 0;
+            padding: 0;
+          }
+          body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            direction: rtl;
+            color: #333;
+          }
+          .container {
+            width: 60mm;
+            max-width: 60mm;
+            margin: 0 auto;
+            padding: 3mm;
+          }
+          .header {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #000;
+          }
+          .ticket-code {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 8px auto;
+            color: #000;
+            border: 2px solid #000;
+            padding: 8px 5px;
+            border-radius: 5px;
+            width: 50mm;
+            max-width: 50mm;
+          }
+          .info {
+            font-size: 11px;
+            margin: 4px 0;
+            color: #333;
+          }
+          .footer {
+            margin-top: 8px;
+            font-size: 10px;
+            color: #555;
+            border-top: 1px dashed #999;
+            padding-top: 6px;
+          }
+          .barcode {
+            margin: 6px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            letter-spacing: 2px;
+          }
+        </style>
+      </head>
+      <body onload="window.print();">
+        <div class="container">
+          <div class="header">${queue.name}</div>
+          <div class="ticket-code">${ticketNumber}</div>
+          <div class="info">מספר תור שלך</div>
+          <div class="info">נוצר: ${new Date(createdTime).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</div>
+          <div class="barcode">|||  ${ticketNumber}  |||</div>
+          <div class="footer">
+            <div>אנא המתן עד שיקראו למספר שלך</div>
+            <div>תודה על הסבלנות!</div>
           </div>
-        </body>
-        </html>
-      `;
+        </div>
+      </body>
+      </html>
+    `;
 
-      // Remove old iframe if exists
+    // Remove old iframe if exists
+    if (printIframeRef.current) {
+      try {
+        document.body.removeChild(printIframeRef.current);
+      } catch (e) {
+        console.warn("Failed to remove old iframe:", e);
+      }
+    }
+
+    // Create completely hidden iframe
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.top = '-10000px';
+    iframe.style.left = '-10000px';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
+    iframe.style.opacity = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+    printIframeRef.current = iframe;
+
+    const iframeDoc = iframe.contentWindow.document;
+    iframeDoc.open();
+    iframeDoc.write(printContent);
+    iframeDoc.close();
+
+    // Cleanup after print
+    setTimeout(() => {
       if (printIframeRef.current) {
         try {
           document.body.removeChild(printIframeRef.current);
+          printIframeRef.current = null;
         } catch (e) {
-          console.warn("Failed to remove old iframe:", e);
+          console.warn("Failed to remove iframe after print:", e);
         }
       }
-
-      // Create completely hidden iframe
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.top = '-10000px';
-      iframe.style.left = '-10000px';
-      iframe.style.width = '1px';
-      iframe.style.height = '1px';
-      iframe.style.opacity = '0';
-      iframe.style.border = 'none';
-      document.body.appendChild(iframe);
-      printIframeRef.current = iframe;
-
-      const iframeDoc = iframe.contentWindow.document;
-      iframeDoc.open();
-      iframeDoc.write(printContent);
-      iframeDoc.close();
-
-      // Cleanup after print
-      setTimeout(() => {
-        if (printIframeRef.current) {
-          try {
-            document.body.removeChild(printIframeRef.current);
-            printIframeRef.current = null;
-          } catch (e) {
-            console.warn("Failed to remove iframe after print:", e);
-          }
-        }
-      }, 2000);
-    };
-
-    const timer = setTimeout(printTicket, 300);
-    return () => clearTimeout(timer);
-  }, [newTicket, queue]);
+    }, 2000);
+  }, [queue]);
 
   const ensureQueue = async (branchId, deptName) => {
     const allQueues = await base44.entities.Queue.list();
