@@ -275,26 +275,35 @@ export default function KioskPage() {
       throw new Error("No queue_id available");
     }
     
-    console.log("[Kiosk] Creating new ticket for queue:", currentQueueId);
+    console.log("[Kiosk] ========== START TICKET CREATION ==========");
+    console.log("[Kiosk] Queue ID:", currentQueueId);
+    console.log("[Kiosk] Timestamp:", new Date().toISOString());
     
-    // ALWAYS fetch fresh queue data from DB to get the LATEST seq_counter
-    // Use filter to ensure we get fresh data, not cached
-    const allQueues = await base44.entities.Queue.filter({ id: currentQueueId });
-    if (!allQueues || allQueues.length === 0) {
-      throw new Error("Queue not found: " + currentQueueId);
+    // Step 1: Get ALL tickets for this queue to find the max seq number
+    const existingTickets = await base44.entities.Ticket.filter({ queue_id: currentQueueId });
+    console.log("[Kiosk] Existing tickets count:", existingTickets.length);
+    
+    // Find the maximum seq number from existing tickets
+    let maxSeq = 0;
+    if (existingTickets && existingTickets.length > 0) {
+      maxSeq = Math.max(...existingTickets.map(t => t.seq || 0));
     }
-    const freshQueue = allQueues[0];
+    console.log("[Kiosk] Max existing seq:", maxSeq);
     
-    const currentCounter = freshQueue.seq_counter || 0;
-    const newSeq = currentCounter + 1;
+    // Also check queue counter
+    const freshQueue = await base44.entities.Queue.get(currentQueueId);
+    const queueCounter = freshQueue.seq_counter || 0;
+    console.log("[Kiosk] Queue counter from DB:", queueCounter);
     
-    console.log("[Kiosk] Current counter:", currentCounter, "New seq:", newSeq);
+    // Use the higher of the two to ensure we never duplicate
+    const newSeq = Math.max(maxSeq, queueCounter) + 1;
+    console.log("[Kiosk] NEW SEQ TO USE:", newSeq);
 
-    // Update queue counter in DB FIRST - this must complete before creating ticket
+    // Step 2: Update queue counter in DB FIRST
     await base44.entities.Queue.update(currentQueueId, { seq_counter: newSeq });
     console.log("[Kiosk] Queue counter updated to:", newSeq);
 
-    // Create ticket with new seq
+    // Step 3: Create ticket with new seq
     const ticket = await base44.entities.Ticket.create({
       queue_id: currentQueueId,
       seq: newSeq,
@@ -304,7 +313,10 @@ export default function KioskPage() {
       join_club: shouldJoinClub
     });
     
-    console.log("[Kiosk] Ticket created with seq:", ticket.seq, "id:", ticket.id);
+    console.log("[Kiosk] ========== TICKET CREATED ==========");
+    console.log("[Kiosk] Ticket ID:", ticket.id);
+    console.log("[Kiosk] Ticket SEQ from server:", ticket.seq);
+    console.log("[Kiosk] Full ticket response:", JSON.stringify(ticket, null, 2));
 
     await base44.entities.TicketEvent.create({
       ticket_id: ticket.id,
@@ -316,7 +328,11 @@ export default function KioskPage() {
     setQueue(prev => ({ ...prev, seq_counter: newSeq }));
 
     // Return with explicitly set seq to ensure correct number is used
-    return { ticket: { ...ticket, seq: newSeq }, queue: { ...freshQueue, seq_counter: newSeq } };
+    const result = { ticket: { ...ticket, seq: newSeq }, queue: { ...freshQueue, seq_counter: newSeq } };
+    console.log("[Kiosk] Returning result with seq:", result.ticket.seq);
+    console.log("[Kiosk] ========== END TICKET CREATION ==========");
+    
+    return result;
   };
 
   const createRegularTicket = async () => {
