@@ -130,60 +130,81 @@ export default function KioskPage() {
           <title>כרטיס תור</title>
           <style>
             @media print {
-              @page { margin: 0; size: 80mm auto; }
-              body { margin: 0; }
+              @page { 
+                margin: 0; 
+                size: 72mm auto;
+                padding: 0;
+              }
+              body { 
+                margin: 0; 
+                padding: 0;
+              }
+            }
+            * {
+              box-sizing: border-box;
             }
             body {
               font-family: Arial, sans-serif;
               text-align: center;
-              padding: 20px;
+              padding: 8px;
+              margin: 0;
               direction: rtl;
               color: #333;
+              width: 72mm;
+              max-width: 72mm;
+            }
+            .container {
+              width: 100%;
+              max-width: 68mm;
+              margin: 0 auto;
             }
             .header {
-              font-size: 24px;
+              font-size: 20px;
               font-weight: bold;
-              margin-bottom: 10px;
+              margin-bottom: 8px;
               color: #1e40af;
             }
             .ticket-code {
-              font-size: 72px;
+              font-size: 56px;
               font-weight: bold;
-              margin: 30px 0;
+              margin: 15px auto;
               color: #000;
-              border: 4px solid #1e40af;
-              padding: 20px;
-              border-radius: 10px;
+              border: 3px solid #1e40af;
+              padding: 12px 8px;
+              border-radius: 8px;
+              max-width: 60mm;
             }
             .info {
-              font-size: 18px;
-              margin: 10px 0;
+              font-size: 14px;
+              margin: 6px 0;
               color: #374151;
             }
             .footer {
-              margin-top: 30px;
-              font-size: 14px;
+              margin-top: 15px;
+              font-size: 12px;
               color: #6b7280;
               border-top: 2px dashed #d1d5db;
-              padding-top: 15px;
+              padding-top: 10px;
             }
             .barcode {
-              margin: 20px 0;
+              margin: 12px 0;
               font-family: 'Courier New', monospace;
-              font-size: 20px;
-              letter-spacing: 4px;
+              font-size: 16px;
+              letter-spacing: 3px;
             }
           </style>
         </head>
         <body onload="window.print();">
-          <div class="header">${queue.name}</div>
-          <div class="ticket-code">${ticketNumber}</div>
-          <div class="info">מספר תור שלך</div>
-          <div class="info">נוצר: ${new Date(newTicket.created_date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</div>
-          <div class="barcode">|||  ${ticketNumber}  |||</div>
-          <div class="footer">
-            <div>אנא המתן עד שיקראו למספר שלך</div>
-            <div>תודה על הסבלנות!</div>
+          <div class="container">
+            <div class="header">${queue.name}</div>
+            <div class="ticket-code">${ticketNumber}</div>
+            <div class="info">מספר תור שלך</div>
+            <div class="info">נוצר: ${new Date(newTicket.created_date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</div>
+            <div class="barcode">|||  ${ticketNumber}  |||</div>
+            <div class="footer">
+              <div>אנא המתן עד שיקראו למספר שלך</div>
+              <div>תודה על הסבלנות!</div>
+            </div>
           </div>
         </body>
         </html>
@@ -296,11 +317,14 @@ export default function KioskPage() {
     setShowSmsModal(false);
     
     try {
+      // Fetch fresh queue data to get latest seq_counter
       const currentQueue = await base44.entities.Queue.get(queue_id);
       const newSeq = (currentQueue.seq_counter || 0) + 1;
 
+      // Update queue counter FIRST
       await base44.entities.Queue.update(queue_id, { seq_counter: newSeq });
 
+      // Create ticket with new seq
       const ticket = await base44.entities.Ticket.create({
         queue_id,
         seq: newSeq,
@@ -316,7 +340,8 @@ export default function KioskPage() {
         actor_role: "customer"
       });
 
-      setNewTicket({ ...ticket, queue: currentQueue });
+      // Set ticket with queue for printing - use the NEW seq number
+      setNewTicket({ ...ticket, seq: newSeq, queue: currentQueue });
       setShowSmsConfirmation(true);
       
       setTimeout(() => {
@@ -493,8 +518,21 @@ export default function KioskPage() {
             className="h-20 w-auto mx-auto mb-4"
           />
           <h1 className="text-5xl font-bold mb-4" style={{ color: '#111111' }}>{queue.name}</h1>
-          <p className="text-xl text-gray-600">בחר אפשרות לקבלת מספר תור</p>
-        </div>
+            <p className="text-xl text-gray-600">בחר אפשרות לקבלת מספר תור</p>
+          </div>
+
+          {/* Back button */}
+          <Button
+            onClick={() => {
+              const url = createPageUrl("Kiosk") + `?branch_id=${branch_id}`;
+              navigate(url);
+            }}
+            variant="outline"
+            className="mb-6 gap-2 text-lg"
+            style={{ borderColor: '#41B649', color: '#1F5F25' }}
+          >
+            ← חזרה לבחירת מחלקה
+          </Button>
 
         <div className="max-w-6xl mx-auto">
           <AnimatePresence mode="wait">
