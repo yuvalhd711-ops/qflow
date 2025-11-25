@@ -131,66 +131,66 @@ export default function KioskPage() {
           <style>
             @media print {
               @page { 
-                margin: 0; 
-                size: 72mm auto;
-                padding: 0;
-              }
-              body { 
-                margin: 0; 
-                padding: 0;
+                margin: 2mm !important;
+                size: 80mm auto !important;
               }
             }
             * {
               box-sizing: border-box;
+              margin: 0;
+              padding: 0;
+            }
+            html, body {
+              width: 100%;
+              margin: 0;
+              padding: 0;
             }
             body {
               font-family: Arial, sans-serif;
               text-align: center;
-              padding: 8px;
-              margin: 0;
               direction: rtl;
               color: #333;
-              width: 72mm;
-              max-width: 72mm;
             }
             .container {
-              width: 100%;
-              max-width: 68mm;
+              width: 60mm;
+              max-width: 60mm;
               margin: 0 auto;
+              padding: 3mm;
             }
             .header {
-              font-size: 20px;
+              font-size: 16px;
               font-weight: bold;
-              margin-bottom: 8px;
-              color: #1e40af;
+              margin-bottom: 5px;
+              color: #000;
             }
             .ticket-code {
-              font-size: 56px;
+              font-size: 48px;
               font-weight: bold;
-              margin: 15px auto;
+              margin: 8px auto;
               color: #000;
-              border: 3px solid #1e40af;
-              padding: 12px 8px;
-              border-radius: 8px;
-              max-width: 60mm;
+              border: 2px solid #000;
+              padding: 8px 5px;
+              border-radius: 5px;
+              width: 50mm;
+              max-width: 50mm;
             }
             .info {
-              font-size: 14px;
-              margin: 6px 0;
-              color: #374151;
+              font-size: 11px;
+              margin: 4px 0;
+              color: #333;
             }
             .footer {
-              margin-top: 15px;
-              font-size: 12px;
-              color: #6b7280;
-              border-top: 2px dashed #d1d5db;
-              padding-top: 10px;
+              margin-top: 8px;
+              font-size: 10px;
+              color: #555;
+              border-top: 1px dashed #999;
+              padding-top: 6px;
             }
             .barcode {
-              margin: 12px 0;
+              margin: 6px 0;
               font-family: 'Courier New', monospace;
-              font-size: 16px;
-              letter-spacing: 3px;
+              font-size: 12px;
+              letter-spacing: 2px;
             }
           </style>
         </head>
@@ -289,11 +289,14 @@ export default function KioskPage() {
         actor_role: "customer"
       });
 
+      // Update local queue state with new counter
+      setQueue({ ...currentQueue, seq_counter: newSeq });
+      
       setNewTicket({ ...ticket, queue: currentQueue });
       
       setTimeout(() => {
         setNewTicket(null);
-      }, 15000);
+      }, 2000);
     } catch (error) {
       console.error("Error creating ticket:", error);
       alert("שגיאה ביצירת כרטיס. אנא נסה שוב.");
@@ -317,11 +320,11 @@ export default function KioskPage() {
     setShowSmsModal(false);
     
     try {
-      // Fetch fresh queue data to get latest seq_counter
-      const currentQueue = await base44.entities.Queue.get(queue_id);
-      const newSeq = (currentQueue.seq_counter || 0) + 1;
+      // Fetch FRESH queue data to get the LATEST seq_counter from DB
+      const freshQueue = await base44.entities.Queue.get(queue_id);
+      const newSeq = (freshQueue.seq_counter || 0) + 1;
 
-      // Update queue counter FIRST
+      // Update queue counter in DB FIRST
       await base44.entities.Queue.update(queue_id, { seq_counter: newSeq });
 
       // Create ticket with new seq
@@ -340,17 +343,20 @@ export default function KioskPage() {
         actor_role: "customer"
       });
 
-      // Set ticket with queue for printing - use the NEW seq number
-      setNewTicket({ ...ticket, seq: newSeq, queue: currentQueue });
+      // Update local queue state with new counter
+      setQueue({ ...freshQueue, seq_counter: newSeq });
+      
+      // Set ticket with fresh queue data for printing
+      setNewTicket({ ...ticket, seq: newSeq, queue: freshQueue });
       setShowSmsConfirmation(true);
       
       setTimeout(() => {
         setShowSmsConfirmation(false);
-      }, 5000);
+      }, 2000);
       
       setTimeout(() => {
         setNewTicket(null);
-      }, 15000);
+      }, 2000);
     } catch (error) {
       console.error("Error creating ticket:", error);
       alert("שגיאה ביצירת כרטיס. אנא נסה שוב.");
