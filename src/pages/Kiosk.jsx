@@ -343,20 +343,33 @@ export default function KioskPage() {
   };
 
   const createRegularTicket = async () => {
+    if (isCreating) return; // Prevent double-clicks
     setIsCreating(true);
+    
     try {
-      const { ticket, queue: freshQueue } = await createNewTicket(null, false);
+      const { ticket } = await createNewTicket(null, false);
       
-      setNewTicket({ ...ticket, queue: freshQueue });
+      // CRITICAL: Create a completely new object with explicit seq
+      // to ensure React sees this as a new state value
+      const displayTicket = {
+        id: ticket.id,
+        seq: ticket.seq,
+        created_date: ticket.created_date || new Date().toISOString(),
+        join_club: false
+      };
+      
+      console.log("[Kiosk] Setting newTicket for display with seq:", displayTicket.seq);
+      setNewTicket(displayTicket);
       
       setTimeout(() => {
         setNewTicket(null);
-      }, 2000);
+      }, 3000);
     } catch (error) {
       console.error("Error creating ticket:", error);
       alert("שגיאה ביצירת כרטיס. אנא נסה שוב.");
+    } finally {
+      setIsCreating(false);
     }
-    setIsCreating(false);
   };
 
   const handleSmsChoice = () => {
@@ -371,27 +384,38 @@ export default function KioskPage() {
       return;
     }
 
+    if (isCreating) return; // Prevent double-clicks
     setIsCreating(true);
     setShowSmsModal(false);
     
     try {
-      const { ticket, queue: freshQueue } = await createNewTicket(phoneNumber, joinClub);
+      const { ticket } = await createNewTicket(phoneNumber, joinClub);
       
-      setNewTicket({ ...ticket, queue: freshQueue });
+      // CRITICAL: Create a completely new object with explicit seq
+      const displayTicket = {
+        id: ticket.id,
+        seq: ticket.seq,
+        created_date: ticket.created_date || new Date().toISOString(),
+        join_club: joinClub
+      };
+      
+      console.log("[Kiosk] Setting newTicket (SMS) for display with seq:", displayTicket.seq);
+      setNewTicket(displayTicket);
       setShowSmsConfirmation(true);
       
       setTimeout(() => {
         setShowSmsConfirmation(false);
-      }, 2000);
+      }, 3000);
       
       setTimeout(() => {
         setNewTicket(null);
-      }, 2000);
+      }, 3000);
     } catch (error) {
       console.error("Error creating ticket:", error);
       alert("שגיאה ביצירת כרטיס. אנא נסה שוב.");
+    } finally {
+      setIsCreating(false);
     }
-    setIsCreating(false);
   };
 
   const selectDepartment = async (deptName) => {
