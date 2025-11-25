@@ -24,7 +24,9 @@ export default function KioskPage() {
   const [activeDepartments, setActiveDepartments] = useState([]);
   const [queue, setQueue] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [newTicket, setNewTicket] = useState(null);
+  const [displayedTicketSeq, setDisplayedTicketSeq] = useState(null); // The seq number to show on screen
+  const [displayedTicketTime, setDisplayedTicketTime] = useState(null); // The creation time
+  const [showTicketCard, setShowTicketCard] = useState(false); // Whether to show the ticket card
   const [loading, setLoading] = useState(true);
   const [branches, setBranches] = useState([]);
   const [showSmsModal, setShowSmsModal] = useState(false);
@@ -33,6 +35,7 @@ export default function KioskPage() {
   const [showSmsConfirmation, setShowSmsConfirmation] = useState(false);
   const [error, setError] = useState(null);
   const printIframeRef = useRef(null);
+  const localSeqCounterRef = useRef(null); // Local counter to track seq between clicks
 
   const loadDepartments = useCallback(async () => {
     if (!branch_id) {
