@@ -268,22 +268,43 @@ export default function KioskPage() {
 
   // Shared function to create a new ticket - used by both regular and SMS flows
   const createNewTicket = async (customerPhone = null, shouldJoinClub = false) => {
+    // Use the queue_id from URL params directly to avoid stale state
+    const currentQueueId = queue_id;
+    
+    if (!currentQueueId) {
+      throw new Error("No queue_id available");
+    }
+    
+    console.log("[Kiosk] Creating new ticket for queue:", currentQueueId);
+    
     // ALWAYS fetch fresh queue data from DB to get the LATEST seq_counter
-    const freshQueue = await base44.entities.Queue.get(queue_id);
-    const newSeq = (freshQueue.seq_counter || 0) + 1;
+    // Use filter to ensure we get fresh data, not cached
+    const allQueues = await base44.entities.Queue.filter({ id: currentQueueId });
+    if (!allQueues || allQueues.length === 0) {
+      throw new Error("Queue not found: " + currentQueueId);
+    }
+    const freshQueue = allQueues[0];
+    
+    const currentCounter = freshQueue.seq_counter || 0;
+    const newSeq = currentCounter + 1;
+    
+    console.log("[Kiosk] Current counter:", currentCounter, "New seq:", newSeq);
 
-    // Update queue counter in DB FIRST
-    await base44.entities.Queue.update(queue_id, { seq_counter: newSeq });
+    // Update queue counter in DB FIRST - this must complete before creating ticket
+    await base44.entities.Queue.update(currentQueueId, { seq_counter: newSeq });
+    console.log("[Kiosk] Queue counter updated to:", newSeq);
 
     // Create ticket with new seq
     const ticket = await base44.entities.Ticket.create({
-      queue_id,
+      queue_id: currentQueueId,
       seq: newSeq,
       state: "waiting",
       source: "kiosk",
       customer_phone: customerPhone,
       join_club: shouldJoinClub
     });
+    
+    console.log("[Kiosk] Ticket created with seq:", ticket.seq, "id:", ticket.id);
 
     await base44.entities.TicketEvent.create({
       ticket_id: ticket.id,
@@ -292,9 +313,10 @@ export default function KioskPage() {
     });
 
     // Update local queue state with new counter
-    setQueue({ ...freshQueue, seq_counter: newSeq });
+    setQueue(prev => ({ ...prev, seq_counter: newSeq }));
 
-    return { ticket: { ...ticket, seq: newSeq }, queue: freshQueue };
+    // Return with explicitly set seq to ensure correct number is used
+    return { ticket: { ...ticket, seq: newSeq }, queue: { ...freshQueue, seq_counter: newSeq } };
   };
 
   const createRegularTicket = async () => {
