@@ -669,7 +669,9 @@ export default function KioskPage() {
                       </div>
                     </motion.div>
                     <h2 className="text-3xl font-bold mb-4" style={{ color: '#111111' }}>המספר שלך</h2>
-                    <div className="text-9xl font-bold mb-6" style={{ color: '#E52521' }}>{newTicket.seq}</div>
+                    <div className="text-9xl font-bold mb-6" style={{ color: '#E52521' }}>
+                      {newTicket?.seq || "---"}
+                    </div>
                     <div className="info text-2xl" style={{ color: '#111111' }}>מספר תור שלך</div>
                     <div className="text-lg text-gray-600 mt-4 rounded-lg p-3" style={{ backgroundColor: '#E6F9EA' }}>
                       נוצר: {new Date(newTicket.created_date).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
