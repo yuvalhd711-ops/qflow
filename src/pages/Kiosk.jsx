@@ -268,55 +268,58 @@ export default function KioskPage() {
 
   // Shared function to create a new ticket - used by both regular and SMS flows
   const createNewTicket = async (customerPhone = null, shouldJoinClub = false) => {
-    // Use the queue_id from URL params directly to avoid stale state
     const currentQueueId = queue_id;
     
     if (!currentQueueId) {
       throw new Error("No queue_id available");
     }
     
+    const timestamp = Date.now();
     console.log("[Kiosk] ========== START TICKET CREATION ==========");
     console.log("[Kiosk] Queue ID:", currentQueueId);
-    console.log("[Kiosk] Timestamp:", new Date().toISOString());
+    console.log("[Kiosk] Timestamp:", timestamp);
     
-    // Step 1: Get ALL tickets for this queue to find the max seq number
-    const existingTickets = await base44.entities.Ticket.filter({ queue_id: currentQueueId });
-    console.log("[Kiosk] Existing tickets count:", existingTickets.length);
+    // Step 1: Get ALL tickets for this queue using list() + manual filter
+    // This bypasses any potential caching issues with filter()
+    const allTickets = await base44.entities.Ticket.list();
+    const queueTickets = allTickets.filter(t => t.queue_id === currentQueueId);
     
-    // Find the maximum seq number from existing tickets
+    console.log("[Kiosk] Total tickets in system:", allTickets.length);
+    console.log("[Kiosk] Tickets for this queue:", queueTickets.length);
+    
+    // Find the maximum seq number from existing tickets for THIS queue
     let maxSeq = 0;
-    if (existingTickets && existingTickets.length > 0) {
-      maxSeq = Math.max(...existingTickets.map(t => t.seq || 0));
+    if (queueTickets.length > 0) {
+      const seqNumbers = queueTickets.map(t => t.seq || 0);
+      maxSeq = Math.max(...seqNumbers);
+      console.log("[Kiosk] All seq numbers:", seqNumbers.sort((a,b) => b-a).slice(0, 10));
     }
     console.log("[Kiosk] Max existing seq:", maxSeq);
     
-    // Also check queue counter
-    const freshQueue = await base44.entities.Queue.get(currentQueueId);
-    const queueCounter = freshQueue.seq_counter || 0;
-    console.log("[Kiosk] Queue counter from DB:", queueCounter);
-    
-    // Use the higher of the two to ensure we never duplicate
-    const newSeq = Math.max(maxSeq, queueCounter) + 1;
-    console.log("[Kiosk] NEW SEQ TO USE:", newSeq);
+    // The new sequence number is simply max + 1
+    const newSeq = maxSeq + 1;
+    console.log("[Kiosk] *** NEW SEQ TO USE:", newSeq, "***");
 
-    // Step 2: Update queue counter in DB FIRST
-    await base44.entities.Queue.update(currentQueueId, { seq_counter: newSeq });
-    console.log("[Kiosk] Queue counter updated to:", newSeq);
-
-    // Step 3: Create ticket with new seq
-    const ticket = await base44.entities.Ticket.create({
+    // Step 2: Create the ticket FIRST with the new seq
+    const ticketData = {
       queue_id: currentQueueId,
       seq: newSeq,
       state: "waiting",
       source: "kiosk",
       customer_phone: customerPhone,
       join_club: shouldJoinClub
-    });
+    };
+    console.log("[Kiosk] Creating ticket with data:", JSON.stringify(ticketData));
+    
+    const ticket = await base44.entities.Ticket.create(ticketData);
     
     console.log("[Kiosk] ========== TICKET CREATED ==========");
     console.log("[Kiosk] Ticket ID:", ticket.id);
-    console.log("[Kiosk] Ticket SEQ from server:", ticket.seq);
-    console.log("[Kiosk] Full ticket response:", JSON.stringify(ticket, null, 2));
+    console.log("[Kiosk] Ticket SEQ returned from server:", ticket.seq);
+    console.log("[Kiosk] Full ticket:", JSON.stringify(ticket));
+
+    // Step 3: Update queue counter
+    await base44.entities.Queue.update(currentQueueId, { seq_counter: newSeq });
 
     await base44.entities.TicketEvent.create({
       ticket_id: ticket.id,
@@ -324,15 +327,19 @@ export default function KioskPage() {
       actor_role: "customer"
     });
 
-    // Update local queue state with new counter
-    setQueue(prev => ({ ...prev, seq_counter: newSeq }));
-
-    // Return with explicitly set seq to ensure correct number is used
-    const result = { ticket: { ...ticket, seq: newSeq }, queue: { ...freshQueue, seq_counter: newSeq } };
-    console.log("[Kiosk] Returning result with seq:", result.ticket.seq);
+    // CRITICAL: Use the seq we calculated, not what the server returned
+    // (in case server doesn't return seq correctly)
+    const finalSeq = newSeq;
+    console.log("[Kiosk] FINAL SEQ FOR DISPLAY:", finalSeq);
     console.log("[Kiosk] ========== END TICKET CREATION ==========");
     
-    return result;
+    // Update local state
+    setQueue(prev => prev ? { ...prev, seq_counter: finalSeq } : prev);
+
+    return { 
+      ticket: { ...ticket, seq: finalSeq }, 
+      queue: queue ? { ...queue, seq_counter: finalSeq } : null 
+    };
   };
 
   const createRegularTicket = async () => {
