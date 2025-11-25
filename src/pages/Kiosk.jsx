@@ -375,29 +375,31 @@ export default function KioskPage() {
     if (isCreating) return; // Prevent double-clicks
     setIsCreating(true);
     setShowSmsModal(false);
+    setNewTicket(null); // Clear any previous ticket first
     
     try {
       const { ticket } = await createNewTicket(phoneNumber, joinClub);
+      const seqNumber = ticket.seq;
       
-      // CRITICAL: Create a completely new object with explicit seq
-      const displayTicket = {
+      console.log("[Kiosk] *** DISPLAY SEQ (SMS):", seqNumber, "***");
+      
+      // Set ticket with unique key to force React re-render
+      setNewTicket({
         id: ticket.id,
-        seq: ticket.seq,
-        created_date: ticket.created_date || new Date().toISOString(),
-        join_club: joinClub
-      };
-      
-      console.log("[Kiosk] Setting newTicket (SMS) for display with seq:", displayTicket.seq);
-      setNewTicket(displayTicket);
+        seq: seqNumber,
+        created_date: ticket.created_date,
+        join_club: joinClub,
+        _key: Date.now() // Force new object identity
+      });
       setShowSmsConfirmation(true);
       
       setTimeout(() => {
         setShowSmsConfirmation(false);
-      }, 3000);
+      }, 4000);
       
       setTimeout(() => {
         setNewTicket(null);
-      }, 3000);
+      }, 4000);
     } catch (error) {
       console.error("Error creating ticket:", error);
       alert("שגיאה ביצירת כרטיס. אנא נסה שוב.");
