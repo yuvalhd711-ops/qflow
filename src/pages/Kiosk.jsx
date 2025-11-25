@@ -266,7 +266,7 @@ export default function KioskPage() {
   };
 
   // Shared function to create a new ticket - used by both regular and SMS flows
-  // Uses a local counter ref to guarantee unique incrementing numbers per session
+  // Uses local ref counter to guarantee sequential numbers even if server is slow
   const createNewTicket = async (customerPhone = null, shouldJoinClub = false) => {
     const currentQueueId = queue_id;
     
@@ -276,21 +276,28 @@ export default function KioskPage() {
     
     console.log("[Kiosk] ========== START TICKET CREATION ==========");
     console.log("[Kiosk] Queue ID:", currentQueueId);
+    console.log("[Kiosk] Local counter ref before:", localSeqCounterRef.current);
     
     // Step 1: Fetch fresh queue data directly from server
     const freshQueue = await base44.entities.Queue.get(currentQueueId);
-    const currentCounter = freshQueue.seq_counter || 0;
-    console.log("[Kiosk] Fresh queue counter from server:", currentCounter);
+    const serverCounter = freshQueue.seq_counter || 0;
+    console.log("[Kiosk] Server counter:", serverCounter);
     
-    // Step 2: Calculate new seq
-    const newSeq = currentCounter + 1;
-    console.log("[Kiosk] NEW SEQ TO CREATE:", newSeq);
+    // Step 2: Calculate new seq - use MAX of server counter and local counter
+    // This ensures we never go backwards even if server is slow to sync
+    const baseCounter = Math.max(serverCounter, localSeqCounterRef.current || 0);
+    const newSeq = baseCounter + 1;
+    
+    // Step 3: Update local ref immediately
+    localSeqCounterRef.current = newSeq;
+    console.log("[Kiosk] NEW SEQ:", newSeq, "(local ref updated)");
 
-    // Step 3: Update queue counter FIRST (atomic increment)
+    // Step 4: Update queue counter on server
     await base44.entities.Queue.update(currentQueueId, { seq_counter: newSeq });
-    console.log("[Kiosk] Queue counter updated to:", newSeq);
+    console.log("[Kiosk] Server counter updated to:", newSeq);
 
-    // Step 4: Create the ticket with the new seq
+    // Step 5: Create the ticket with the new seq
+    const createdTime = new Date().toISOString();
     const ticketData = {
       queue_id: currentQueueId,
       seq: newSeq,
@@ -303,22 +310,19 @@ export default function KioskPage() {
     const ticket = await base44.entities.Ticket.create(ticketData);
     console.log("[Kiosk] Ticket created - ID:", ticket.id, "SEQ:", newSeq);
 
-    // Step 5: Create event
-    await base44.entities.TicketEvent.create({
+    // Step 6: Create event (don't await, fire and forget)
+    base44.entities.TicketEvent.create({
       ticket_id: ticket.id,
       event_type: "created",
       actor_role: "customer"
-    });
+    }).catch(e => console.warn("[Kiosk] Event creation failed:", e));
 
     console.log("[Kiosk] ========== RETURNING SEQ:", newSeq, "==========");
     
-    // CRITICAL: Return the newSeq we calculated, this is the source of truth
+    // Return the newSeq we calculated - this is 100% the source of truth
     return { 
-      ticket: { 
-        id: ticket.id, 
-        seq: newSeq,  // Use our calculated seq, not server response
-        created_date: ticket.created_date || new Date().toISOString()
-      }
+      seq: newSeq,
+      createdTime: createdTime
     };
   };
 
