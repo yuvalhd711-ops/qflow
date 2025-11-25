@@ -332,25 +332,26 @@ export default function KioskPage() {
   const createRegularTicket = async () => {
     if (isCreating) return; // Prevent double-clicks
     setIsCreating(true);
+    setNewTicket(null); // Clear any previous ticket first
     
     try {
       const { ticket } = await createNewTicket(null, false);
+      const seqNumber = ticket.seq;
       
-      // CRITICAL: Create a completely new object with explicit seq
-      // to ensure React sees this as a new state value
-      const displayTicket = {
+      console.log("[Kiosk] *** DISPLAY SEQ:", seqNumber, "***");
+      
+      // Set ticket with unique key to force React re-render
+      setNewTicket({
         id: ticket.id,
-        seq: ticket.seq,
-        created_date: ticket.created_date || new Date().toISOString(),
-        join_club: false
-      };
-      
-      console.log("[Kiosk] Setting newTicket for display with seq:", displayTicket.seq);
-      setNewTicket(displayTicket);
+        seq: seqNumber,
+        created_date: ticket.created_date,
+        join_club: false,
+        _key: Date.now() // Force new object identity
+      });
       
       setTimeout(() => {
         setNewTicket(null);
-      }, 3000);
+      }, 4000);
     } catch (error) {
       console.error("Error creating ticket:", error);
       alert("שגיאה ביצירת כרטיס. אנא נסה שוב.");
