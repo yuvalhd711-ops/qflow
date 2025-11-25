@@ -329,25 +329,27 @@ export default function KioskPage() {
   const createRegularTicket = async () => {
     if (isCreating) return; // Prevent double-clicks
     setIsCreating(true);
-    setNewTicket(null); // Clear any previous ticket first
+    setShowTicketCard(false); // Hide any previous ticket
     
     try {
-      const { ticket } = await createNewTicket(null, false);
-      const seqNumber = ticket.seq;
+      const { seq, createdTime } = await createNewTicket(null, false);
       
-      console.log("[Kiosk] *** DISPLAY SEQ:", seqNumber, "***");
+      console.log("[Kiosk] *** DISPLAYING AND PRINTING SEQ:", seq, "***");
       
-      // Set ticket with unique key to force React re-render
-      setNewTicket({
-        id: ticket.id,
-        seq: seqNumber,
-        created_date: ticket.created_date,
-        join_club: false,
-        _key: Date.now() // Force new object identity
-      });
+      // Update display state with the seq number directly
+      setDisplayedTicketSeq(seq);
+      setDisplayedTicketTime(createdTime);
+      setShowTicketCard(true);
       
+      // Print immediately with the seq number
       setTimeout(() => {
-        setNewTicket(null);
+        printTicketNow(seq, createdTime);
+      }, 300);
+      
+      // Hide after 4 seconds
+      setTimeout(() => {
+        setShowTicketCard(false);
+        setDisplayedTicketSeq(null);
       }, 4000);
     } catch (error) {
       console.error("Error creating ticket:", error);
