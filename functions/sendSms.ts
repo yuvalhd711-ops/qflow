@@ -1,7 +1,7 @@
 Deno.serve(async (req) => {
   try {
     if (req.method !== "POST") {
-      return Response.json({ ok: false, error: "Method not allowed" }, { status: 405 });
+      return Response.json({ ok: false, error: "Method not allowed" }, { status: 200 });
     }
 
     const { phoneNumber, queueName, ticketSeq } = await req.json();
@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
     if (!phoneNumber || !queueName || !ticketSeq) {
       return Response.json(
         { ok: false, error: "Missing required parameters: phoneNumber, queueName, ticketSeq" },
-        { status: 400 }
+        { status: 200 }
       );
     }
 
@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
     if (!username || !encryptPassword || !senderName) {
       return Response.json(
         { ok: false, error: "SMS service not configured properly" },
-        { status: 500 }
+        { status: 200 }
       );
     }
 
@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
     formData.append("UserName", username);
     formData.append("EncryptPassword", encryptPassword);
     formData.append("Subscribers", phone);
-    formData.append("Message", message);           // ⚠️ Message (לא MessageText)
+    formData.append("Message", message);
     formData.append("SenderName", senderName);
     formData.append("DeliveryDelayInMinutes", "0");
     formData.append("ExpirationDelayInMinutes", "0");
@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     if (!response.ok) {
       return Response.json(
         { ok: false, error: `Provider HTTP ${response.status}`, raw: responseText.slice(0, 1500) },
-        { status: 502 }
+        { status: 200 }
       );
     }
 
@@ -74,19 +74,19 @@ Deno.serve(async (req) => {
     if (!ok) {
       return Response.json(
         { ok: false, error: "Provider returned failure", raw: responseText.slice(0, 1500) },
-        { status: 502 }
+        { status: 200 }
       );
     }
 
     return Response.json({
       ok: true,
       providerStatus: statusMatch?.[1] ?? null,
-    });
+    }, { status: 200 });
 
   } catch (error) {
     return Response.json(
       { ok: false, error: String(error) },
-      { status: 500 }
+      { status: 200 }
     );
   }
 });
