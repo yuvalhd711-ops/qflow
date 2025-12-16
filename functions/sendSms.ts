@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
         formData.append('EncryptPassword', encryptPassword);
         formData.append('Subscribers', phoneNumber);
         formData.append('SenderName', senderName);
-        formData.append('MessageText', message);
+        formData.append('Message', message);
 
         // Send SMS via SimplyClub HTTP POST
         const response = await fetch('https://simplesms.co.il/webservice/SmsWS.asmx/SendSms', {
