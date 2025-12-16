@@ -17,8 +17,9 @@ Deno.serve(async (req) => {
 
         if (!username || !encryptPassword || !senderName) {
             return Response.json({ 
+                ok: false,
                 error: 'SMS service not configured properly' 
-            }, { status: 500 });
+            }, { status: 200 });
         }
 
         // Build SMS message exactly as specified
