@@ -47,9 +47,10 @@ Deno.serve(async (req) => {
         if (!response.ok) {
             console.error('SimplyClub API error:', responseText);
             return Response.json({ 
+                ok: false,
                 error: 'Failed to send SMS',
                 details: responseText
-            }, { status: 500 });
+            }, { status: 200 });
         }
 
         // Parse XML response to check for success
@@ -58,21 +59,23 @@ Deno.serve(async (req) => {
 
         if (isSuccess) {
             return Response.json({ 
-                success: true,
+                ok: true,
                 message: 'SMS sent successfully'
-            });
+            }, { status: 200 });
         } else {
             console.error('SimplyClub response indicates failure:', responseText);
             return Response.json({ 
+                ok: false,
                 error: 'SMS service returned an error',
                 details: responseText
-            }, { status: 500 });
+            }, { status: 200 });
         }
 
     } catch (error) {
         console.error('Error in sendSms function:', error);
         return Response.json({ 
+            ok: false,
             error: error.message 
-        }, { status: 500 });
+        }, { status: 200 });
     }
 });
