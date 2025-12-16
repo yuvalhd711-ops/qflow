@@ -6,8 +6,9 @@ Deno.serve(async (req) => {
 
         if (!phoneNumber || !queueName || !ticketSeq) {
             return Response.json({ 
+                ok: false,
                 error: 'Missing required parameters: phoneNumber, queueName, ticketSeq' 
-            }, { status: 400 });
+            }, { status: 200 });
         }
 
         // Get secrets
