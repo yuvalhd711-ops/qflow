@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     formData.append("ExpirationDelayInMinutes", "0");
     formData.append("SendId", `kiosk_${queueName}_${ticketSeq}`); // מונע כפילויות יחסית
 
-    const resp = await fetch("https://simplesms.co.il/webservice/SmsWS.asmx/SendSms", {
+    const resp = await fetch("https://www.simplesms.co.il/webservice/SmsWS.asmx/SendSms", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: formData.toString(),
