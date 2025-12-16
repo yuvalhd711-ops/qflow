@@ -13,17 +13,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // N8N webhook URL
-    const n8nWebhookUrl = Deno.env.get("n8n");
-    
-    if (!n8nWebhookUrl) {
-      return Response.json(
-        { ok: false, error: "N8N webhook URL not configured" },
-        { status: 200 }
-      );
-    }
-
-    // Secrets for SimplySMS (will be used by N8N)
+    // Get SimplySMS credentials from secrets
     const username = Deno.env.get("SIMPLYCLUB_USERNAME");
     const encryptPassword = Deno.env.get("SIMPLYCLUB_ENCRYPT_PASSWORD");
     const senderName = Deno.env.get("SIMPLYCLUB_SENDER_NAME");
@@ -35,10 +25,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Normalize phone
+    // Normalize phone - digits only
     const phone = String(phoneNumber).trim().replace(/[^\d]/g, "");
 
-    // Message
+    // Build message
     const message =
       `שוק העיר\n` +
       `מחלקת ${queueName}\n` +
@@ -46,48 +36,44 @@ Deno.serve(async (req) => {
       `להצטרפות למועדון:\n` +
       `https://s1c.me/shukhair_01`;
 
-    // Call N8N webhook with all the data
-    const response = await fetch(n8nWebhookUrl, {
+    // Build form-urlencoded body - EXACT parameter names from SimplySMS documentation
+    const formData = new URLSearchParams({
+      UserName: username,
+      EncryptPassword: encryptPassword,
+      Subscribers: phone,
+      Message: message,
+      SenderName: senderName,
+      DeliveryDelayInMinutes: "0",
+      ExpirationDelayInMinutes: "1440",
+      SendId: `kiosk_${queueName}_${ticketSeq}_${Date.now()}`
+    });
+
+    // Call SimplySMS API - EXACT endpoint from documentation
+    const response = await fetch("https://simplesms.co.il/webservice/SmsWS.asmx/SendSms", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded"
       },
-      body: JSON.stringify({
-        username,
-        encryptPassword,
-        senderName,
-        phone,
-        message,
-        sendId: `kiosk_${queueName}_${ticketSeq}`
-      }),
+      body: formData.toString()
     });
 
     const responseText = await response.text();
 
     if (!response.ok) {
       return Response.json(
-        { ok: false, error: `N8N webhook error: HTTP ${response.status}`, raw: responseText.slice(0, 1500) },
+        { ok: false, error: `SimplySMS API error: HTTP ${response.status}`, raw: responseText.slice(0, 500) },
         { status: 200 }
       );
     }
 
-    // Try to parse the response
-    let result;
-    try {
-      result = JSON.parse(responseText);
-    } catch {
-      // If not JSON, assume success if status is OK
-      return Response.json({
-        ok: true,
-        providerStatus: "sent",
-      }, { status: 200 });
-    }
+    // SimplySMS returns XML - check for success indicators
+    const isSuccess = responseText.includes("<result>OK</result>") || 
+                      responseText.includes("<Status>QUEUED</Status>");
 
-    // Return the result from N8N
     return Response.json({
-      ok: result.ok !== false,
-      providerStatus: result.status || result.providerStatus || null,
-      details: result.details || null
+      ok: isSuccess,
+      providerStatus: isSuccess ? "queued" : "unknown",
+      raw: responseText.slice(0, 500)
     }, { status: 200 });
 
   } catch (error) {
