@@ -4,7 +4,6 @@ Deno.serve(async (req) => {
       return Response.json({ ok: false, error: "Method not allowed" }, { status: 200 });
     }
 
-    // Get input from Kiosk: to, department, queueNumber, link, msgId (optional)
     const { phoneNumber, queueName, ticketSeq } = await req.json();
 
     if (!phoneNumber || !queueName || !ticketSeq) {
@@ -14,14 +13,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get SimpleSMS JSON API credentials from secrets
-    const username = Deno.env.get("TELEMESSER_USERNAME");
-    const encryptPassword = Deno.env.get("TELEMESSER_ENCRYPT_PASSWORD");
-    const senderName = Deno.env.get("TELEMESSER_SENDERNAME");
-
-    if (!username || !encryptPassword || !senderName) {
+    // Get API key for Linux proxy server
+    const apiKey = Deno.env.get("SMS_PROXY_KEY");
+    if (!apiKey) {
       return Response.json(
-        { ok: false, error: "SMS JSON API not configured - missing TELEMESSER credentials" },
+        { ok: false, error: "SMS_PROXY_KEY not configured" },
         { status: 200 }
       );
     }
@@ -37,106 +33,47 @@ Deno.serve(async (req) => {
       `להצטרפות למועדון:\n` +
       `https://s1c.me/shukhair_01`;
 
-    // Build payload according to OpenAPI schema - EXACT field names
+    // Build payload for Linux proxy
     const payload = {
-      Credentials: {
-        UserName: username,
-        EncryptPassword: encryptPassword
-      },
-      SenderName: senderName,
-      DeliveryDelayInMinutes: 0,
-      ExpirationDelayInMinutes: 300,
-      SendId: "QueueKiosk",
-      messages: [
-        {
-          Cli: normalizedPhone,
-          Text: messageText,
-          MsgId: `kiosk_${queueName}_${ticketSeq}_${Date.now()}`
-        }
-      ]
+      phone: normalizedPhone,
+      text: messageText,
+      msgId: `kiosk_${queueName}_${ticketSeq}_${Date.now()}`
     };
 
-    // Call SimpleSMS JSON API - PRIMARY SERVER (no whitelist needed)
-    const apiUrl = "https://simplesms.co.il/webservice/json/smsv2.aspx";
-    
-    const response = await fetch(apiUrl, {
+    // Call Linux SMS proxy server
+    const response = await fetch("http://84.110.65.94:2000/send-sms", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Accept": "application/json"
+        "X-API-Key": apiKey
       },
       body: JSON.stringify(payload)
     });
 
     const responseText = await response.text();
-    let providerResponse;
+    let proxyResponse;
 
     try {
-      providerResponse = JSON.parse(responseText);
+      proxyResponse = JSON.parse(responseText);
     } catch {
-      providerResponse = { raw: responseText };
+      proxyResponse = { raw: responseText };
     }
 
-    // Handle HTTP status codes according to documentation
-    if (response.status === 404) {
-      return Response.json({
-        ok: false,
-        error: "Authentication failed - user/pass incorrect or IP not whitelisted",
-        status: 404,
-        providerResponse
-      }, { status: 200 });
-    }
+    console.log("SMS Proxy Response:", proxyResponse);
 
-    if (response.status === 502) {
+    if (response.status === 200) {
       return Response.json({
-        ok: false,
-        error: "SenderName is empty",
-        status: 502,
-        providerResponse
-      }, { status: 200 });
-    }
-
-    if (response.status === 503) {
-      return Response.json({
-        ok: false,
-        error: "SenderName too long (max 11 chars)",
-        status: 503,
-        providerResponse
-      }, { status: 200 });
-    }
-
-    if (response.status === 505) {
-      return Response.json({
-        ok: false,
-        error: "Delivery/Expiration delay invalid",
-        status: 505,
-        providerResponse
-      }, { status: 200 });
-    }
-
-    if (response.status === 506) {
-      return Response.json({
-        ok: false,
-        error: "SenderName not approved or invalid",
-        status: 506,
-        providerResponse
-      }, { status: 200 });
-    }
-
-    if (!response.ok) {
-      return Response.json({
-        ok: false,
-        error: `SimpleSMS JSON API error: HTTP ${response.status}`,
+        ok: true,
         status: response.status,
-        providerResponse
+        proxyResponse
       }, { status: 200 });
     }
 
-    // Success
     return Response.json({
-      ok: true,
+      ok: false,
+      error: `SMS Proxy error: HTTP ${response.status}`,
       status: response.status,
-      providerResponse
+      proxyResponse
     }, { status: 200 });
 
   } catch (error) {
