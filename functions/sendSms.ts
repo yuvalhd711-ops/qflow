@@ -4,7 +4,7 @@ Deno.serve(async (req) => {
       return Response.json({ ok: false, error: "Method not allowed" }, { status: 200 });
     }
 
-    // Get input from Kiosk: phoneNumber, queueName, ticketSeq
+    // Get input from Kiosk: to, department, queueNumber, link, msgId (optional)
     const { phoneNumber, queueName, ticketSeq } = await req.json();
 
     if (!phoneNumber || !queueName || !ticketSeq) {
@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
       `להצטרפות למועדון:\n` +
       `https://s1c.me/shukhair_01`;
 
-    // Build payload according to SimpleSMS OpenAPI schema
+    // Build payload according to OpenAPI schema - EXACT field names
     const payload = {
       Credentials: {
         UserName: username,
@@ -56,36 +56,87 @@ Deno.serve(async (req) => {
       ]
     };
 
-    // ===== CLOUDFLARE WORKER PROXY =====
-    // TODO: Replace this URL with your actual Cloudflare Worker URL after deployment
-    // See CLOUDFLARE_WORKER_SMS_PROXY.js for deployment instructions
-    const WORKER_URL = "https://YOUR-WORKER-NAME.YOUR-SUBDOMAIN.workers.dev";
+    // Call SimpleSMS JSON API - PRIMARY SERVER (no whitelist needed)
+    const apiUrl = "https://simplesms.co.il/webservice/json/smsv2.aspx";
     
-    // Call Cloudflare Worker instead of SimpleSMS directly
-    const response = await fetch(WORKER_URL, {
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Accept": "application/json"
       },
       body: JSON.stringify(payload)
     });
 
-    const result = await response.json();
+    const responseText = await response.text();
+    let providerResponse;
 
-    if (!result.ok) {
+    try {
+      providerResponse = JSON.parse(responseText);
+    } catch {
+      providerResponse = { raw: responseText };
+    }
+
+    // Handle HTTP status codes according to documentation
+    if (response.status === 404) {
       return Response.json({
         ok: false,
-        error: result.error || "SMS sending failed",
-        status: result.status,
-        data: result.data
+        error: "Authentication failed - user/pass incorrect or IP not whitelisted",
+        status: 404,
+        providerResponse
+      }, { status: 200 });
+    }
+
+    if (response.status === 502) {
+      return Response.json({
+        ok: false,
+        error: "SenderName is empty",
+        status: 502,
+        providerResponse
+      }, { status: 200 });
+    }
+
+    if (response.status === 503) {
+      return Response.json({
+        ok: false,
+        error: "SenderName too long (max 11 chars)",
+        status: 503,
+        providerResponse
+      }, { status: 200 });
+    }
+
+    if (response.status === 505) {
+      return Response.json({
+        ok: false,
+        error: "Delivery/Expiration delay invalid",
+        status: 505,
+        providerResponse
+      }, { status: 200 });
+    }
+
+    if (response.status === 506) {
+      return Response.json({
+        ok: false,
+        error: "SenderName not approved or invalid",
+        status: 506,
+        providerResponse
+      }, { status: 200 });
+    }
+
+    if (!response.ok) {
+      return Response.json({
+        ok: false,
+        error: `SimpleSMS JSON API error: HTTP ${response.status}`,
+        status: response.status,
+        providerResponse
       }, { status: 200 });
     }
 
     // Success
     return Response.json({
       ok: true,
-      status: result.status,
-      data: result.data
+      status: response.status,
+      providerResponse
     }, { status: 200 });
 
   } catch (error) {
