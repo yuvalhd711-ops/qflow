@@ -35,9 +35,9 @@ Deno.serve(async (req) => {
 
     // Build payload for Linux proxy
     const payload = {
-      phone: normalizedPhone,
-      text: messageText,
-      msgId: `kiosk_${queueName}_${ticketSeq}_${Date.now()}`
+      Cli: normalizedPhone,
+      Text: messageText,
+      MsgId: `kiosk_${queueName}_${ticketSeq}_${Date.now()}`
     };
 
     // Call Linux SMS proxy server
