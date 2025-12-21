@@ -4,7 +4,7 @@ Deno.serve(async (req) => {
       return Response.json({ ok: false, error: "Method not allowed" }, { status: 200 });
     }
 
-    const { phoneNumber, queueName, ticketSeq } = await req.json();
+    const { phoneNumber, queueName, ticketSeq, messageType = 'initial' } = await req.json();
 
     if (!phoneNumber || !queueName || !ticketSeq) {
       return Response.json(
@@ -25,13 +25,19 @@ Deno.serve(async (req) => {
     // Normalize phone - digits only
     const normalizedPhone = String(phoneNumber).trim().replace(/[^\d]/g, "");
 
-    // Build message text
-    const messageText =
-      `שוק העיר\n` +
-      `מחלקת ${queueName}\n` +
-      `מספר התור שלך: ${ticketSeq}\n\n` +
-      `להצטרפות למועדון:\n` +
-      `https://s1c.me/shukhair_01`;
+    // Build message text based on type
+    let messageText;
+
+    if (messageType === 'reminder') {
+      messageText = `תורך בשוק העיר בדרך! כרגע יש 2 לקוחות לפניך. תהיה מוכן, נתראה בקרוב בדלפק!`;
+    } else {
+      messageText =
+        `שוק העיר\n` +
+        `מחלקת ${queueName}\n` +
+        `מספר התור שלך: ${ticketSeq}\n\n` +
+        `להצטרפות למועדון:\n` +
+        `https://s1c.me/shukhair_01`;
+    }
 
     // Build payload for Linux proxy
     const payload = {
