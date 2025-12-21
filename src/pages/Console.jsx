@@ -279,6 +279,12 @@ export default function ConsolePage() {
       });
 
       broadcastTicketCall(nextTicket, queue.name);
+      
+      // Trigger two-before SMS notification
+      base44.functions.invoke('notifyTwoBefore', { queue_id }).catch(err => {
+        console.warn('[Console] notifyTwoBefore failed:', err);
+      });
+      
       loadData();
       setError(null);
     } catch (e) {
