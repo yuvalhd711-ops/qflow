@@ -30,6 +30,7 @@ Deno.serve(async (req) => {
       `שוק העיר\n` +
       `מחלקת ${queueName}\n` +
       `מספר התור שלך: ${ticketSeq}\n\n` +
+      'אנחנו נזכיר לך כשהתור מתקרב' +
       `להצטרפות למועדון:\n` +
       `https://s1c.me/shukhair_01`;
     
