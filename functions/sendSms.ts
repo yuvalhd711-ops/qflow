@@ -27,13 +27,13 @@ Deno.serve(async (req) => {
 
     // Build message text
     const defaultMessageText =
-      `שוק העיר\n` +
+      'שוק העיר\n' +
       `מחלקת ${queueName}\n` +
       `מספר התור שלך: ${ticketSeq}\n\n` +
-      `אתה כעת יכול להמשיך בקניות בסניף, אנחנו כבר נשלח לך תזכורת כשהתור יתקרב.` +
-      
-      `להצטרפות למועדון:\n` +
-      `https://s1c.me/shukhair_01`;
+     'אתה כעת יכול להמשיך בקניות בסניף, אנחנו כבר נשלח לך תזכורת כשהתור יתקרב.\n\n' +
+     'להצטרפות למועדון:\n' +
+     'https://s1c.me/shukhair_01';
+
     
     const messageText = messageOverride || defaultMessageText;
 
