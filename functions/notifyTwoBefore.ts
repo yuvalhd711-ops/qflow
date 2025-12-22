@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
       phoneNumber: targetTicket.customer_phone,
       queueName: queueName,
       ticketSeq: targetTicket.seq,
-      messageOverride: "תורך בשוק העיר בדרך! כרגע יש 2 לקוחות לפניך. תהיה מוכן, נתראה בקרוב בדלפק!",
+      messageOverride: "כמעט הגענו אליך... יש עוד 2 לקוחות בתור לפניך. כדאי להתחיל להתקדם לכיוון הדלפק",
       msgId: `two-before-${targetTicket.id}`
     });
 
