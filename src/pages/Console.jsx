@@ -186,7 +186,7 @@ export default function ConsolePage() {
     loadDepartments();
 
     if (branch_id) {
-      const interval = setInterval(loadDepartments, 10000);
+      const interval = setInterval(loadDepartments, 30000);
       return () => clearInterval(interval);
     }
   }, [branch_id]);
@@ -195,7 +195,7 @@ export default function ConsolePage() {
     if (queue_id) {
       loadQueue();
       loadData();
-      const interval = setInterval(loadData, 10000);
+      const interval = setInterval(loadData, 30000);
       return () => clearInterval(interval);
     }
   }, [queue_id, loadQueue, loadData]);
