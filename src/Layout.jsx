@@ -39,17 +39,21 @@ export default function Layout({ children, currentPageName }) {
 
   const checkAccess = async () => {
     try {
+      console.log("[Layout] Checking IP access...");
       const { data } = await base44.functions.invoke('checkIPAccess', {});
+      console.log("[Layout] IP check response:", data);
       
       if (!data.allowed) {
+        console.log("[Layout] Access BLOCKED for IP:", data.clientIP);
         setIpBlocked(true);
         setClientIP(data.clientIP);
         return;
       }
       
+      console.log("[Layout] Access ALLOWED for IP:", data.clientIP);
       loadUser();
     } catch (error) {
-      console.error("Error checking IP access:", error);
+      console.error("[Layout] Error checking IP access:", error);
       setIpBlocked(true);
       setClientIP("שגיאה בבדיקת IP");
     }
