@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -6,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2, Building2, Phone, Save } from "lucide-react";
+import { Plus, Trash2, Building2, Phone, Save, Shield } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -44,10 +43,12 @@ export default function AdminPage() {
   const [contacts, setContacts] = useState([]);
   const [showBranchDialog, setShowBranchDialog] = useState(false);
   const [showContactDialog, setShowContactDialog] = useState(false);
+  const [showIpDialog, setShowIpDialog] = useState(false);
   const [branchSettings, setBranchSettings] = useState({});
   const [savingBranch, setSavingBranch] = useState(null);
   const [isRunningBackfill, setIsRunningBackfill] = useState(false);
-  const [cleaningDupes, setCleaningDupes] = useState(false); // Add this state
+  const [cleaningDupes, setCleaningDupes] = useState(false);
+  const [allowedIPs, setAllowedIPs] = useState([]);
 
   const [branchForm, setBranchForm] = useState({
     name: "",
@@ -59,6 +60,12 @@ export default function AdminPage() {
     branch_id: null,
     contact_name: "",
     phone_number: "",
+    is_active: true
+  });
+
+  const [ipForm, setIpForm] = useState({
+    ip_address: "",
+    description: "",
     is_active: true
   });
 
@@ -78,6 +85,9 @@ export default function AdminPage() {
 
       const contactsData = await base44.entities.BranchContact.list();
       setContacts(contactsData);
+
+      const ipsData = await base44.entities.AllowedIP.list();
+      setAllowedIPs(ipsData);
 
       const settings = {};
       branchesData.forEach(branch => {
@@ -458,6 +468,24 @@ export default function AdminPage() {
     await loadData();
   };
 
+  const createAllowedIP = async () => {
+    await base44.entities.AllowedIP.create(ipForm);
+    setShowIpDialog(false);
+    setIpForm({ ip_address: "", description: "", is_active: true });
+    await loadData();
+  };
+
+  const deleteAllowedIP = async (id) => {
+    if (!confirm("האם אתה בטוח שברצונך למחוק כתובת IP זו?")) return;
+    await base44.entities.AllowedIP.delete(id);
+    await loadData();
+  };
+
+  const toggleIPStatus = async (id, currentStatus) => {
+    await base44.entities.AllowedIP.update(id, { is_active: !currentStatus });
+    await loadData();
+  };
+
   const getBranchName = (branchId) => {
     return branches.find(b => String(b.id) === String(branchId))?.name || "לא ידוע";
   };
@@ -621,7 +649,7 @@ export default function AdminPage() {
         </div>
 
         <Tabs defaultValue="branches" className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2 bg-white" style={{ borderColor: '#41B649' }}>
+          <TabsList className="grid w-full max-w-2xl grid-cols-3 bg-white mx-auto" style={{ borderColor: '#41B649' }}>
             <TabsTrigger value="branches" className="data-[state=active]:bg-green-50 data-[state=active]:text-green-900">
               <Building2 className="w-4 h-4 mr-2" />
               סניפים ומחלקות
@@ -629,6 +657,9 @@ export default function AdminPage() {
             <TabsTrigger value="contacts" className="data-[state=active]:bg-green-50 data-[state=active]:text-green-900">
               <Phone className="w-4 h-4 mr-2" />
               התראות SMS
+            </TabsTrigger>
+            <TabsTrigger value="ip-whitelist" className="data-[state=active]:bg-green-50 data-[state=active]:text-green-900">
+              🔒 הלבנת IP
             </TabsTrigger>
           </TabsList>
 
@@ -769,6 +800,75 @@ export default function AdminPage() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="ip-whitelist" className="space-y-4">
+            <div className="flex justify-end">
+              <Button
+                onClick={() => {
+                  setIpForm({ ip_address: "", description: "", is_active: true });
+                  setShowIpDialog(true);
+                }}
+                className="gap-2 text-white shadow-md hover:opacity-90"
+                style={{ backgroundColor: '#E52521' }}
+              >
+                <Plus className="w-4 h-4" />
+                כתובת IP חדשה
+              </Button>
+            </div>
+
+            <Card className="bg-white shadow-lg" style={{ borderColor: '#41B649', borderWidth: '1px' }}>
+              <CardHeader style={{ backgroundColor: '#E6F9EA' }}>
+                <CardTitle style={{ color: '#111111' }}>כתובות IP מותרות</CardTitle>
+                <p className="text-sm text-gray-600 mt-2">רק כתובות IP מהרשימה הזו יוכלו להתחבר למערכת</p>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>כתובת IP</TableHead>
+                      <TableHead>תיאור</TableHead>
+                      <TableHead>סטטוס</TableHead>
+                      <TableHead>פעולות</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allowedIPs.map((ip) => (
+                      <TableRow key={ip.id}>
+                        <TableCell className="font-mono font-medium">{ip.ip_address}</TableCell>
+                        <TableCell>{ip.description || "-"}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={ip.is_active}
+                              onCheckedChange={() => toggleIPStatus(ip.id, ip.is_active)}
+                              className="data-[state=checked]:bg-[#41B649]"
+                            />
+                            <Badge style={{ backgroundColor: ip.is_active ? '#E6F9EA' : '#f3f4f6', color: ip.is_active ? '#41B649' : '#6b7280' }}>
+                              {ip.is_active ? "פעיל" : "לא פעיל"}
+                            </Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => deleteAllowedIP(ip.id)}
+                          >
+                            <Trash2 className="w-4 h-4" style={{ color: '#E52521' }} />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {allowedIPs.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    אין כתובות IP מוגדרות - כל המשתמשים יכולים להתחבר
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </div>
 
@@ -881,6 +981,56 @@ export default function AdminPage() {
               style={{ backgroundColor: '#41B649' }}
             >
               צור
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showIpDialog} onOpenChange={setShowIpDialog}>
+        <DialogContent dir="rtl" className="bg-white">
+          <DialogHeader>
+            <DialogTitle>כתובת IP חדשה</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>כתובת IP</Label>
+              <Input
+                value={ipForm.ip_address}
+                onChange={(e) => setIpForm({ ...ipForm, ip_address: e.target.value })}
+                placeholder="למשל: 192.168.1.100"
+                className="bg-white font-mono"
+                dir="ltr"
+              />
+            </div>
+            <div>
+              <Label>תיאור (אופציונלי)</Label>
+              <Input
+                value={ipForm.description}
+                onChange={(e) => setIpForm({ ...ipForm, description: e.target.value })}
+                placeholder="למשל: משרד ראשי, בית מנהל"
+                className="bg-white"
+              />
+            </div>
+            <div className="flex items-center gap-3 py-2">
+              <Switch
+                checked={ipForm.is_active}
+                onCheckedChange={(checked) => setIpForm({ ...ipForm, is_active: checked })}
+                className="data-[state=checked]:bg-[#41B649]"
+              />
+              <Label>כתובת פעילה</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowIpDialog(false)}>
+              ביטול
+            </Button>
+            <Button 
+              onClick={createAllowedIP}
+              disabled={!ipForm.ip_address}
+              className="text-white hover:opacity-90"
+              style={{ backgroundColor: '#41B649' }}
+            >
+              הוסף
             </Button>
           </DialogFooter>
         </DialogContent>
