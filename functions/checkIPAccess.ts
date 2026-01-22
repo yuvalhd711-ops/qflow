@@ -4,24 +4,38 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     
-    // Get user's IP address from request headers
-    const clientIP = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() 
-                  || req.headers.get('x-real-ip') 
-                  || 'unknown';
-
-    console.log(`[checkIPAccess] Client IP: ${clientIP}`);
+    // Try multiple headers to get real client IP
+    const xForwardedFor = req.headers.get('x-forwarded-for');
+    const xRealIp = req.headers.get('x-real-ip');
+    const cfConnectingIp = req.headers.get('cf-connecting-ip');
+    const remoteAddr = req.headers.get('remote-addr');
+    
+    // Log all headers for debugging
+    console.log(`[checkIPAccess] Headers:`);
+    console.log(`  x-forwarded-for: ${xForwardedFor}`);
+    console.log(`  x-real-ip: ${xRealIp}`);
+    console.log(`  cf-connecting-ip: ${cfConnectingIp}`);
+    console.log(`  remote-addr: ${remoteAddr}`);
+    
+    // Extract client IP (prioritize CloudFlare, then x-forwarded-for, then x-real-ip)
+    let clientIP = cfConnectingIp 
+      || (xForwardedFor ? xForwardedFor.split(',')[0].trim() : null)
+      || xRealIp
+      || remoteAddr
+      || 'unknown';
+    
+    console.log(`[checkIPAccess] Determined Client IP: ${clientIP}`);
 
     // Get all allowed IPs from database
     const allowedIPs = await base44.asServiceRole.entities.AllowedIP.filter({ is_active: true });
-
     console.log(`[checkIPAccess] Found ${allowedIPs.length} active allowed IPs`);
 
-    // If no IPs are configured, allow access (whitelist disabled)
+    // If no IPs are configured, BLOCK access (strict mode)
     if (allowedIPs.length === 0) {
-      console.log(`[checkIPAccess] No IPs configured - access allowed`);
+      console.log(`[checkIPAccess] No IPs configured - BLOCKING access (strict whitelist mode)`);
       return Response.json({ 
-        allowed: true, 
-        reason: "No IP restrictions configured",
+        allowed: false,
+        reason: "No IP whitelist configured - access denied",
         clientIP 
       }, { status: 200 });
     }
@@ -30,7 +44,7 @@ Deno.serve(async (req) => {
     const isAllowed = allowedIPs.some(ip => ip.ip_address === clientIP);
 
     if (isAllowed) {
-      console.log(`[checkIPAccess] IP ${clientIP} is allowed`);
+      console.log(`[checkIPAccess] IP ${clientIP} is ALLOWED ✓`);
       return Response.json({ 
         allowed: true, 
         reason: "IP is in whitelist",
@@ -38,7 +52,7 @@ Deno.serve(async (req) => {
       }, { status: 200 });
     }
 
-    console.log(`[checkIPAccess] IP ${clientIP} is NOT allowed`);
+    console.log(`[checkIPAccess] IP ${clientIP} is BLOCKED ✗`);
     return Response.json({ 
       allowed: false, 
       reason: "IP not in whitelist",
@@ -47,10 +61,12 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error("[checkIPAccess] Error:", error);
+    // In case of error, BLOCK access (fail secure, not fail open)
     return Response.json({ 
-      allowed: true, // Fail open - don't lock users out if there's an error
-      reason: "Error checking IP",
-      error: error.message 
+      allowed: false,
+      reason: "Error checking IP - access denied for security",
+      error: error.message,
+      clientIP: 'error'
     }, { status: 200 });
   }
 });
