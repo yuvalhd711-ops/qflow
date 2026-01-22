@@ -721,6 +721,26 @@ export default function ConsolePage() {
               ← יציאה למחלקות
             </Button>
             <Button
+              onClick={async () => {
+                if (!confirm("האם אתה בטוח שברצונך למחוק את כל התורים ולאפס את המונה?\n\nפעולה זו תמחק את כל הכרטיסים הממתינים והיסטוריה!\n\nזה בדרך כלל נעשה רק בתחילת יום עבודה חדש.")) {
+                  return;
+                }
+                try {
+                  await base44.functions.invoke('clearQueue', { queue_id });
+                  alert("התורים נוקו בהצלחה! ✅");
+                  await loadData();
+                } catch (error) {
+                  console.error("Error clearing queue:", error);
+                  alert("שגיאה בניקוי התורים: " + error.message);
+                }
+              }}
+              variant="outline"
+              className="gap-2"
+              style={{ borderColor: '#E52521', color: '#E52521' }}
+            >
+              🗑️ נקה תורים
+            </Button>
+            <Button
               onClick={() => setOnBreak(!onBreak)}
               variant={onBreak ? "default" : "outline"}
               className="gap-2"
