@@ -50,7 +50,8 @@ export default function Layout({ children, currentPageName }) {
       loadUser();
     } catch (error) {
       console.error("Error checking IP access:", error);
-      loadUser(); // Fail open - allow access on error
+      setIpBlocked(true);
+      setClientIP("שגיאה בבדיקת IP");
     }
   };
 
