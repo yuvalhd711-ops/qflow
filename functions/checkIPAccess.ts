@@ -1,7 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
-  // NEVER throw errors - always return a valid response
   try {
     const base44 = createClientFromRequest(req);
     
@@ -46,16 +45,6 @@ Deno.serve(async (req) => {
         console.warn(`[checkIPAccess] Error reading ${header}:`, e);
       }
     }
-    
-    // If no IP detected, allow access (development/testing)
-    if (!clientIP || clientIP === 'unknown') {
-      console.log("[checkIPAccess] ⚠️ No IP detected - ALLOWING access (dev mode)");
-      return Response.json({ 
-        allowed: true, 
-        clientIP: 'unable-to-determine',
-        reason: 'IP detection unavailable - access granted'
-      }, { status: 200 });
-    }
 
     // Get allowed IPs from database
     let allowedIPs = [];
@@ -64,11 +53,11 @@ Deno.serve(async (req) => {
       console.log(`[checkIPAccess] Found ${allowedIPs.length} allowed IPs in whitelist`);
     } catch (dbError) {
       console.error("[checkIPAccess] ❌ DB Error:", dbError);
-      // On DB error, allow access to prevent lockout
+      // On DB error, allow access to prevent lockout of admins
       return Response.json({ 
         allowed: true, 
-        clientIP: clientIP,
-        reason: 'DB error - allowing access for safety'
+        clientIP: clientIP || 'db-error',
+        reason: 'Database error - allowing access for safety'
       }, { status: 200 });
     }
     
@@ -77,8 +66,18 @@ Deno.serve(async (req) => {
       console.log("[checkIPAccess] ℹ️ No whitelist configured - ALLOWING all");
       return Response.json({ 
         allowed: true, 
-        clientIP: clientIP,
-        reason: 'No whitelist - all access allowed'
+        clientIP: clientIP || 'no-whitelist',
+        reason: 'No whitelist configured - all access allowed'
+      }, { status: 200 });
+    }
+
+    // If whitelist exists but no IP detected - BLOCK
+    if (!clientIP || clientIP === 'unknown') {
+      console.log("[checkIPAccess] ⚠️ Whitelist active but no IP detected - BLOCKING");
+      return Response.json({ 
+        allowed: false, 
+        clientIP: 'unable-to-determine',
+        reason: 'IP detection failed - access denied'
       }, { status: 200 });
     }
 
@@ -97,11 +96,11 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error("[checkIPAccess] ⚠️ UNEXPECTED ERROR:", error);
-    // CRITICAL: On any error, allow access to prevent lockout
+    // On system error, allow access to prevent complete lockout
     return Response.json({ 
       allowed: true,
-      clientIP: 'error',
-      reason: 'System error - access granted for safety',
+      clientIP: 'system-error',
+      reason: 'System error - allowing access for safety',
       error: error.message
     }, { status: 200 });
   }
