@@ -2,46 +2,34 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
   try {
-    console.log("[checkIPAccess] Function called");
-    
     // Initialize SDK with service role
     const base44 = createClientFromRequest(req);
-    console.log("[checkIPAccess] SDK initialized");
     
     // Try multiple headers to get real client IP
     const xForwardedFor = req.headers.get('x-forwarded-for');
     const xRealIp = req.headers.get('x-real-ip');
     const cfConnectingIp = req.headers.get('cf-connecting-ip');
-    const remoteAddr = req.headers.get('remote-addr');
-    
-    // Log all headers for debugging
-    console.log(`[checkIPAccess] Headers:`);
-    console.log(`  x-forwarded-for: ${xForwardedFor}`);
-    console.log(`  x-real-ip: ${xRealIp}`);
-    console.log(`  cf-connecting-ip: ${cfConnectingIp}`);
-    console.log(`  remote-addr: ${remoteAddr}`);
     
     // Extract client IP (prioritize CloudFlare, then x-forwarded-for, then x-real-ip)
     let clientIP = cfConnectingIp 
       || (xForwardedFor ? xForwardedFor.split(',')[0].trim() : null)
       || xRealIp
-      || remoteAddr
       || 'unknown';
     
-    console.log(`[checkIPAccess] Determined Client IP: ${clientIP}`);
+    console.log(`[checkIPAccess] Client IP: ${clientIP}`);
 
     // Get all allowed IPs from database using service role
     const allowedIPs = await base44.asServiceRole.entities.AllowedIP.filter({ is_active: true });
     console.log(`[checkIPAccess] Found ${allowedIPs.length} active allowed IPs`);
 
-    // If no IPs are configured, BLOCK access (strict mode)
+    // If no IPs are configured, ALLOW access (whitelist disabled)
     if (allowedIPs.length === 0) {
-      console.log(`[checkIPAccess] No IPs configured - BLOCKING access (strict whitelist mode)`);
+      console.log(`[checkIPAccess] No IPs configured - ALLOWING access`);
       return Response.json({ 
-        allowed: false,
-        reason: "No IP whitelist configured - access denied",
+        allowed: true,
+        reason: "No IP whitelist configured",
         clientIP 
-      }, { status: 200 });
+      });
     }
 
     // Check if client IP is in the allowed list
@@ -53,30 +41,26 @@ Deno.serve(async (req) => {
         allowed: true, 
         reason: "IP is in whitelist",
         clientIP 
-      }, { status: 200 });
+      });
     }
 
     console.log(`[checkIPAccess] IP ${clientIP} is BLOCKED ✗`);
-    console.log(`[checkIPAccess] Allowed IPs: ${allowedIPs.map(ip => ip.ip_address).join(', ')}`);
     return Response.json({ 
       allowed: false, 
       reason: "IP not in whitelist",
       clientIP,
       allowedIPs: allowedIPs.map(ip => ip.ip_address)
-    }, { status: 200 });
+    });
 
   } catch (error) {
-    console.error("[checkIPAccess] Error:", error);
-    console.error("[checkIPAccess] Error stack:", error.stack);
-    console.error("[checkIPAccess] Error details:", JSON.stringify(error, null, 2));
+    console.error("[checkIPAccess] Error:", error.message);
     
-    // In case of error, BLOCK access (fail secure, not fail open)
+    // In case of error, ALLOW access (fail open for usability)
     return Response.json({ 
-      allowed: false,
-      reason: "Error checking IP - access denied for security",
+      allowed: true,
+      reason: "Error checking IP - allowing access",
       error: error.message,
-      errorStack: error.stack,
       clientIP: 'error'
-    }, { status: 200 });
+    });
   }
 });
