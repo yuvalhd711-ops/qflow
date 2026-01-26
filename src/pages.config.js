@@ -1,5 +1,4 @@
 import Admin from './pages/Admin';
-import Blocked from './pages/Blocked';
 import Branches from './pages/Branches';
 import Console from './pages/Console';
 import Display from './pages/Display';
@@ -10,7 +9,6 @@ import __Layout from './Layout.jsx';
 
 export const PAGES = {
     "Admin": Admin,
-    "Blocked": Blocked,
     "Branches": Branches,
     "Console": Console,
     "Display": Display,
@@ -19,7 +17,7 @@ export const PAGES = {
 }
 
 export const pagesConfig = {
-    mainPage: "Home",
+    mainPage: "Kiosk",
     Pages: PAGES,
     Layout: __Layout,
 };

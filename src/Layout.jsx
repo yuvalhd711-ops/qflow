@@ -30,11 +30,34 @@ import { Button } from "@/components/ui/button";
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
   const [user, setUser] = React.useState(null);
-  const [ipChecked, setIpChecked] = React.useState(false);
+  const [ipBlocked, setIpBlocked] = React.useState(false);
+  const [clientIP, setClientIP] = React.useState(null);
 
   React.useEffect(() => {
-    loadUser();
+    checkAccess();
   }, []);
+
+  const checkAccess = async () => {
+    try {
+      console.log("[Layout] Checking IP access...");
+      const { data } = await base44.functions.invoke('checkIPAccess', {});
+      console.log("[Layout] IP check response:", data);
+      
+      if (!data.allowed) {
+        console.log("[Layout] Access BLOCKED for IP:", data.clientIP);
+        setIpBlocked(true);
+        setClientIP(data.clientIP);
+        return;
+      }
+      
+      console.log("[Layout] Access ALLOWED for IP:", data.clientIP);
+      loadUser();
+    } catch (error) {
+      console.error("[Layout] Error checking IP access:", error);
+      setIpBlocked(true);
+      setClientIP("שגיאה בבדיקת IP");
+    }
+  };
 
   const loadUser = async () => {
     try {
@@ -49,52 +72,6 @@ export default function Layout({ children, currentPageName }) {
     await base44.auth.logout();
     window.location.reload();
   };
-
-  // Check IP access immediately on mount
-  React.useEffect(() => {
-    const checkIPAccess = async () => {
-      // Skip check on blocked page itself
-      if (location.pathname === '/blocked') {
-        setIpChecked(true);
-        return;
-      }
-
-      try {
-        console.log("[Layout] Checking IP access...");
-        const result = await base44.functions.invoke('checkIPAccess', {});
-        console.log("[Layout] IP check result:", result.data);
-        
-        // CRITICAL: Block if not allowed
-        if (result.data && result.data.allowed === false) {
-          console.log("[Layout] IP BLOCKED - redirecting immediately");
-          // Use replace to prevent back button
-          window.location.replace('/blocked?ip=' + encodeURIComponent(result.data.clientIP));
-          return; // Stop execution
-        }
-        
-        console.log("[Layout] IP ALLOWED - access granted");
-        setIpChecked(true);
-      } catch (error) {
-        console.error("[Layout] IP check failed with error:", error);
-        // On error, BLOCK access for security
-        window.location.replace('/blocked?ip=error');
-      }
-    };
-    
-    checkIPAccess();
-  }, [location.pathname]);
-
-  // Don't render content until IP is checked
-  if (!ipChecked && location.pathname !== '/blocked') {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#E6F9EA' }}>
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 mx-auto mb-4" style={{ borderColor: '#41B649' }}></div>
-          <p className="text-xl text-gray-700">בודק גישה...</p>
-        </div>
-      </div>
-    );
-  }
 
   const navigationItems = [
     {
@@ -128,6 +105,29 @@ export default function Layout({ children, currentPageName }) {
       icon: Building2,
     }
   ];
+
+  if (ipBlocked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" dir="rtl" style={{ backgroundColor: '#E6F9EA' }}>
+        <div className="max-w-md w-full bg-white rounded-xl shadow-2xl p-8 text-center" style={{ borderColor: '#E52521', borderWidth: '3px', borderStyle: 'solid' }}>
+          <div className="text-6xl mb-4">🚫</div>
+          <h1 className="text-3xl font-bold mb-4" style={{ color: '#E52521' }}>גישה נחסמה</h1>
+          <p className="text-gray-700 text-lg mb-6">
+            כתובת ה-IP שלך אינה מורשית לגשת למערכת זו.
+          </p>
+          {clientIP && (
+            <div className="bg-gray-100 rounded-lg p-4 mb-6">
+              <p className="text-sm text-gray-600 mb-1">כתובת ה-IP שלך:</p>
+              <p className="font-mono font-bold text-lg" style={{ color: '#E52521' }}>{clientIP}</p>
+            </div>
+          )}
+          <p className="text-gray-600 text-sm">
+            אם אתה צריך גישה למערכת, אנא פנה למנהל המערכת כדי להוסיף את כתובת ה-IP שלך לרשימת הכתובות המורשות.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>
@@ -226,7 +226,7 @@ export default function Layout({ children, currentPageName }) {
               <div className="flex items-center gap-4">
                 <SidebarTrigger className="p-2 rounded-lg transition-colors duration-200" style={{ hover: { backgroundColor: '#E6F9EA' } }} />
                 <img 
-                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68dbe1252219022b9e191013/8866f21c5_SHuk_LOGO_HAYIR.png"
+                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68dbe1252279022b9e191013/8866f21c5_SHuk_LOGO_HAYIR.png"
                   alt="שוק העיר"
                   className="h-8 w-auto"
                 />
