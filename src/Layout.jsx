@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
   const [user, setUser] = React.useState(null);
+  const [ipChecked, setIpChecked] = React.useState(false);
 
   React.useEffect(() => {
     loadUser();
@@ -49,21 +50,47 @@ export default function Layout({ children, currentPageName }) {
     window.location.reload();
   };
 
-  // Check IP access on every page render
+  // Check IP access immediately on mount
   React.useEffect(() => {
     const checkIPAccess = async () => {
+      // Skip check on blocked page itself
+      if (location.pathname === '/blocked') {
+        return;
+      }
+
       try {
+        console.log("[Layout] Checking IP access...");
         const result = await base44.functions.invoke('checkIPAccess', {});
+        console.log("[Layout] IP check result:", result.data);
+        
         if (!result.data.allowed) {
+          console.log("[Layout] IP BLOCKED - redirecting to blocked page");
           window.location.href = '/blocked?ip=' + encodeURIComponent(result.data.clientIP);
+        } else {
+          console.log("[Layout] IP ALLOWED - access granted");
+          setIpChecked(true);
         }
       } catch (error) {
-        console.error("IP check failed:", error);
+        console.error("[Layout] IP check failed:", error);
+        // On error, allow access (fail open)
+        setIpChecked(true);
       }
     };
     
     checkIPAccess();
-  }, [currentPageName]);
+  }, [location.pathname]);
+
+  // Don't render content until IP is checked
+  if (!ipChecked && location.pathname !== '/blocked') {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#E6F9EA' }}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 mx-auto mb-4" style={{ borderColor: '#41B649' }}></div>
+          <p className="text-xl text-gray-700">בודק גישה...</p>
+        </div>
+      </div>
+    );
+  }
 
   const navigationItems = [
     {
@@ -195,7 +222,7 @@ export default function Layout({ children, currentPageName }) {
               <div className="flex items-center gap-4">
                 <SidebarTrigger className="p-2 rounded-lg transition-colors duration-200" style={{ hover: { backgroundColor: '#E6F9EA' } }} />
                 <img 
-                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68dbe1252279022b9e191013/8866f21c5_SHuk_LOGO_HAYIR.png"
+                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68dbe1252219022b9e191013/8866f21c5_SHuk_LOGO_HAYIR.png"
                   alt="שוק העיר"
                   className="h-8 w-auto"
                 />
