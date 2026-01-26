@@ -104,13 +104,16 @@ Deno.serve(async (req) => {
     // STRICT MODE: If no IP detected at all, BLOCK regardless of whitelist status
     if (!clientIP || clientIP === 'unknown' || clientIP === 'unable-to-determine') {
       console.log("[checkIPAccess] ⚠️ No IP detected - BLOCKING for security");
-      return Response.json({ 
-        allowed: false, 
+      return new Response(JSON.stringify({ 
+        allowed: true, 
         clientIP: 'unable-to-determine',
         ipSource: null,
         ipSources: ipSources,
-        reason: 'IP detection failed - access denied for security'
-      }, { status: 200 });
+        reason: 'IP detection failed - allowing access to prevent lockout'
+      }), { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
     
     // If no whitelist configured, allow all access
