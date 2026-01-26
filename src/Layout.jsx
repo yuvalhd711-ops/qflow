@@ -41,15 +41,25 @@ export default function Layout({ children, currentPageName }) {
     try {
       console.log("[Layout] Checking IP access...");
       
-      // Get appId from current URL
-      const appId = window.location.hostname.split('.')[0];
+      // Call function using fetch with full URL
+      const hostname = window.location.hostname;
+      const appSubdomain = hostname.includes('.') ? hostname.split('.')[0] : '6900bd03618be1f06fb3d138';
+      const apiUrl = `https://base44.app/api/apps/${appSubdomain}/functions/checkIPAccess`;
       
-      // Call function directly via fetch (no auth required)
-      const response = await fetch(`https://base44.app/api/apps/${appId}/functions/checkIPAccess`, {
+      console.log("[Layout] Calling:", apiUrl);
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({})
       });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
       
       const data = await response.json();
       console.log("[Layout] IP check response:", data);
@@ -62,11 +72,12 @@ export default function Layout({ children, currentPageName }) {
       }
       
       console.log("[Layout] Access ALLOWED for IP:", data.clientIP);
+      setClientIP(data.clientIP);
       loadUser();
     } catch (error) {
       console.error("[Layout] Error checking IP access:", error);
       setIpBlocked(true);
-      setClientIP("שגיאה בבדיקת IP");
+      setClientIP(error.message || "שגיאה בבדיקת IP");
     }
   };
 
