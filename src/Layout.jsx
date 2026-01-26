@@ -49,6 +49,22 @@ export default function Layout({ children, currentPageName }) {
     window.location.reload();
   };
 
+  // Check IP access on every page render
+  React.useEffect(() => {
+    const checkIPAccess = async () => {
+      try {
+        const result = await base44.functions.invoke('checkIPAccess', {});
+        if (!result.data.allowed) {
+          window.location.href = '/blocked?ip=' + encodeURIComponent(result.data.clientIP);
+        }
+      } catch (error) {
+        console.error("IP check failed:", error);
+      }
+    };
+    
+    checkIPAccess();
+  }, [currentPageName]);
+
   const navigationItems = [
     {
       title: "דף הבית",
