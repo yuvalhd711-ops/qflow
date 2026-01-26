@@ -140,14 +140,17 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("[checkIPAccess] ⚠️ UNEXPECTED ERROR:", error);
     console.error("[checkIPAccess] Error stack:", error.stack);
-    // STRICT MODE: On system error, BLOCK for security
-    return Response.json({ 
-      allowed: false,
+    // Allow access on system error to prevent lockout
+    return new Response(JSON.stringify({ 
+      allowed: true,
       clientIP: 'system-error',
       ipSource: null,
       ipSources: {},
-      reason: 'System error - access denied for security',
+      reason: 'System error - allowing access to prevent lockout',
       error: error.message
-    }, { status: 200 });
+    }), { 
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 });
