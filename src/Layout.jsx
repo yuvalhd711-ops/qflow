@@ -32,6 +32,7 @@ export default function Layout({ children, currentPageName }) {
   const [user, setUser] = React.useState(null);
   const [ipBlocked, setIpBlocked] = React.useState(false);
   const [clientIP, setClientIP] = React.useState(null);
+  const [ipDebugInfo, setIpDebugInfo] = React.useState(null);
 
   React.useEffect(() => {
     checkAccess();
@@ -47,9 +48,10 @@ export default function Layout({ children, currentPageName }) {
         console.log("[Layout] Access BLOCKED for IP:", data.clientIP);
         setIpBlocked(true);
         setClientIP(data.clientIP);
+        setIpDebugInfo(data);
         return;
       }
-      
+
       console.log("[Layout] Access ALLOWED for IP:", data.clientIP);
       loadUser();
     } catch (error) {
@@ -117,9 +119,35 @@ export default function Layout({ children, currentPageName }) {
             כתובת ה-IP שלך אינה מורשית לגשת למערכת זו.
           </p>
           {clientIP && (
-            <div className="bg-gray-100 rounded-lg p-4 mb-6">
-              <p className="text-sm text-gray-600 mb-1">כתובת ה-IP שלך:</p>
-              <p className="font-mono font-bold text-lg" style={{ color: '#E52521' }}>{clientIP}</p>
+            <div className="bg-gray-100 rounded-lg p-4 mb-6 space-y-3">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">כתובת ה-IP שלך:</p>
+                <p className="font-mono font-bold text-lg" style={{ color: '#E52521' }}>{clientIP}</p>
+              </div>
+              {ipDebugInfo?.ipSource && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">מקור זיהוי:</p>
+                  <p className="font-mono text-sm text-gray-800">{ipDebugInfo.ipSource}</p>
+                </div>
+              )}
+              {ipDebugInfo?.ipSources && Object.keys(ipDebugInfo.ipSources).length > 0 && (
+                <details className="text-sm">
+                  <summary className="text-gray-600 cursor-pointer hover:text-gray-800">מקורות IP נוספים שנמצאו</summary>
+                  <div className="mt-2 bg-white rounded p-2 space-y-1">
+                    {Object.entries(ipDebugInfo.ipSources).map(([key, value]) => (
+                      <div key={key} className="font-mono text-xs">
+                        <span className="text-gray-600">{key}:</span> <span className="text-gray-800">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+              {ipDebugInfo?.reason && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">סיבה:</p>
+                  <p className="text-sm text-gray-700">{ipDebugInfo.reason}</p>
+                </div>
+              )}
             </div>
           )}
           <p className="text-gray-600 text-sm">

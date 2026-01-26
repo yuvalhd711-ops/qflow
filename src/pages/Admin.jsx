@@ -807,7 +807,19 @@ export default function AdminPage() {
                 onClick={async () => {
                   try {
                     const { data } = await base44.functions.invoke('getCurrentIP', {});
-                    alert(`ה-IP שזוהה:\n${data.detectedIP}\n\nמקורות אפשריים:\n${JSON.stringify(data.allIPSources, null, 2)}`);
+                    const ipSourcesList = Object.entries(data.allIPSources || {})
+                      .map(([key, value]) => `  • ${key}: ${value}`)
+                      .join('\n');
+
+                    const message = [
+                      `ה-IP שזוהה: ${data.detectedIP}`,
+                      '',
+                      ipSourcesList ? `מקורות IP שנמצאו:\n${ipSourcesList}` : 'לא נמצאו מקורות IP',
+                      '',
+                      'ניתן להוסיף את ה-IP הזה לרשימת הכתובות המותרות למטה ↓'
+                    ].join('\n');
+
+                    alert(message);
                   } catch (error) {
                     alert('שגיאה בזיהוי IP: ' + error.message);
                   }
