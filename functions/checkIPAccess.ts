@@ -1,112 +1,108 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
+  // NEVER throw errors - always return a valid response
   try {
     const base44 = createClientFromRequest(req);
     
-    // Log ALL headers for debugging
-    console.log(`[checkIPAccess] ===== ALL REQUEST HEADERS =====`);
-    for (const [key, value] of req.headers.entries()) {
-      console.log(`  ${key}: ${value}`);
-    }
-    console.log(`[checkIPAccess] ================================`);
+    console.log(`[checkIPAccess] ===== CHECKING IP ACCESS =====`);
     
     // Try multiple headers to get real client IP
     const possibleHeaders = [
-      'cf-connecting-ip',       // CloudFlare
-      'x-forwarded-for',        // Most common proxy header
-      'x-real-ip',              // Nginx proxy
-      'x-client-ip',            // Other proxies
-      'forwarded',              // RFC 7239
-      'true-client-ip',         // Akamai, CloudFlare Enterprise
-      'x-cluster-client-ip',    // Rackspace LB
-      'fastly-client-ip',       // Fastly CDN
-      'cf-pseudo-ipv4'          // CloudFlare IPv4 fallback
+      'cf-connecting-ip',
+      'x-forwarded-for',
+      'x-real-ip',
+      'x-client-ip',
+      'forwarded',
+      'true-client-ip',
+      'x-cluster-client-ip',
+      'fastly-client-ip',
+      'cf-pseudo-ipv4'
     ];
     
     let clientIP = null;
     
     // Try each header in order
     for (const header of possibleHeaders) {
-      const value = req.headers.get(header);
-      if (value) {
-        console.log(`[checkIPAccess] Found IP in ${header}: ${value}`);
-        if (header === 'x-forwarded-for') {
-          // Take first IP from comma-separated list
-          clientIP = value.split(',')[0].trim();
-        } else if (header === 'forwarded') {
-          // Parse RFC 7239 format
-          const match = value.match(/for=([^;,\s]+)/);
-          clientIP = match ? match[1].replace(/"/g, '') : null;
-        } else {
-          clientIP = value.trim();
+      try {
+        const value = req.headers.get(header);
+        if (value) {
+          console.log(`[checkIPAccess] Found ${header}: ${value}`);
+          if (header === 'x-forwarded-for') {
+            clientIP = value.split(',')[0].trim();
+          } else if (header === 'forwarded') {
+            const match = value.match(/for=([^;,\s]+)/);
+            clientIP = match ? match[1].replace(/"/g, '').replace(/\[|\]/g, '') : null;
+          } else {
+            clientIP = value.trim();
+          }
+          
+          if (clientIP && clientIP !== 'unknown') {
+            console.log(`[checkIPAccess] Using IP: ${clientIP}`);
+            break;
+          }
         }
-        
-        if (clientIP && clientIP !== 'unknown' && clientIP.length > 0) {
-          console.log(`[checkIPAccess] Selected client IP from ${header}: ${clientIP}`);
-          break;
-        }
+      } catch (e) {
+        console.warn(`[checkIPAccess] Error reading ${header}:`, e);
       }
     }
     
-    // Fallback to connection info
+    // If no IP detected, allow access (development/testing)
     if (!clientIP || clientIP === 'unknown') {
-      const connInfo = Deno.serveHttp ? (req as any).conn?.remoteAddr : null;
-      if (connInfo?.hostname) {
-        clientIP = connInfo.hostname;
-        console.log(`[checkIPAccess] Using connection remote addr: ${clientIP}`);
-      }
-    }
-    
-    // Final fallback
-    if (!clientIP || clientIP === 'unknown') {
-      clientIP = 'unable-to-determine';
-      console.log(`[checkIPAccess] WARNING: Unable to determine client IP!`);
-    }
-    
-    console.log(`[checkIPAccess] Final determined Client IP: ${clientIP}`);
-
-    // Get all allowed IPs from database
-    const allowedIPs = await base44.asServiceRole.entities.AllowedIP.filter({ is_active: true });
-    console.log(`[checkIPAccess] Found ${allowedIPs.length} active allowed IPs`);
-
-    // If no IPs are configured, BLOCK access (strict mode)
-    if (allowedIPs.length === 0) {
-      console.log(`[checkIPAccess] No IPs configured - BLOCKING access (strict whitelist mode)`);
-      return Response.json({ 
-        allowed: false,
-        reason: "No IP whitelist configured - access denied",
-        clientIP 
-      }, { status: 200 });
-    }
-
-    // Check if client IP is in the allowed list
-    const isAllowed = allowedIPs.some(ip => ip.ip_address === clientIP);
-
-    if (isAllowed) {
-      console.log(`[checkIPAccess] IP ${clientIP} is ALLOWED ✓`);
+      console.log("[checkIPAccess] ⚠️ No IP detected - ALLOWING access (dev mode)");
       return Response.json({ 
         allowed: true, 
-        reason: "IP is in whitelist",
-        clientIP 
+        clientIP: 'unable-to-determine',
+        reason: 'IP detection unavailable - access granted'
       }, { status: 200 });
     }
 
-    console.log(`[checkIPAccess] IP ${clientIP} is BLOCKED ✗`);
+    // Get allowed IPs from database
+    let allowedIPs = [];
+    try {
+      allowedIPs = await base44.asServiceRole.entities.AllowedIP.filter({ is_active: true });
+      console.log(`[checkIPAccess] Found ${allowedIPs.length} allowed IPs in whitelist`);
+    } catch (dbError) {
+      console.error("[checkIPAccess] ❌ DB Error:", dbError);
+      // On DB error, allow access to prevent lockout
+      return Response.json({ 
+        allowed: true, 
+        clientIP: clientIP,
+        reason: 'DB error - allowing access for safety'
+      }, { status: 200 });
+    }
+    
+    // If no whitelist configured, allow all access
+    if (!allowedIPs || allowedIPs.length === 0) {
+      console.log("[checkIPAccess] ℹ️ No whitelist configured - ALLOWING all");
+      return Response.json({ 
+        allowed: true, 
+        clientIP: clientIP,
+        reason: 'No whitelist - all access allowed'
+      }, { status: 200 });
+    }
+
+    // Check if IP is whitelisted
+    const isAllowed = allowedIPs.some(ip => ip.ip_address === clientIP);
+    
+    console.log(`[checkIPAccess] IP ${clientIP}: ${isAllowed ? '✅ ALLOWED' : '❌ BLOCKED'}`);
+    console.log(`[checkIPAccess] Whitelist: ${allowedIPs.map(ip => ip.ip_address).join(', ')}`);
+
     return Response.json({ 
-      allowed: false, 
-      reason: "IP not in whitelist",
-      clientIP 
+      allowed: isAllowed,
+      clientIP: clientIP,
+      reason: isAllowed ? 'IP whitelisted' : 'IP not in whitelist',
+      whitelistCount: allowedIPs.length
     }, { status: 200 });
 
   } catch (error) {
-    console.error("[checkIPAccess] Error:", error);
-    // In case of error, BLOCK access (fail secure, not fail open)
+    console.error("[checkIPAccess] ⚠️ UNEXPECTED ERROR:", error);
+    // CRITICAL: On any error, allow access to prevent lockout
     return Response.json({ 
-      allowed: false,
-      reason: "Error checking IP - access denied for security",
-      error: error.message,
-      clientIP: 'error'
+      allowed: true,
+      clientIP: 'error',
+      reason: 'System error - access granted for safety',
+      error: error.message
     }, { status: 200 });
   }
 });
