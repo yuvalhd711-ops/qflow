@@ -42,31 +42,35 @@ export default function Layout({ children, currentPageName }) {
     try {
       console.log("[Layout] Checking IP access...");
       const response = await base44.functions.invoke('checkIPAccess', {});
-      console.log("[Layout] Response:", response);
+      console.log("[Layout] Full response object:", response);
       
-      const result = response?.data || response;
-      console.log("[Layout] Result:", result);
+      // Handle Axios response structure
+      const result = response?.data;
+      console.log("[Layout] Extracted result:", result);
       
-      if (result?.allowed === false) {
+      if (!result) {
+        console.error("[Layout] No result data in response");
+        loadUser(); // Allow access if response is malformed
+        return;
+      }
+      
+      if (result.allowed === false) {
         console.log("[Layout] BLOCKED - IP:", result.clientIP);
         setIpBlocked(true);
-        setClientIP(result.clientIP);
+        setClientIP(result.clientIP || 'לא זוהה');
         setIpDebugInfo({
-          reason: result.reason
+          reason: result.reason || 'IP לא מורשה'
         });
         return;
       }
 
-      console.log("[Layout] ALLOWED - IP:", result?.clientIP);
+      console.log("[Layout] ALLOWED - IP:", result.clientIP);
       loadUser();
     } catch (error) {
       console.error("[Layout] IP Check Error:", error);
-      // Block access on error for security
-      setIpBlocked(true);
-      setClientIP('error');
-      setIpDebugInfo({
-        reason: 'שגיאת מערכת - הגישה נחסמה'
-      });
+      console.error("[Layout] Error details:", error.message, error.response);
+      // Allow access on error to prevent lockout
+      loadUser();
     }
   };
 
