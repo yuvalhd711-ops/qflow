@@ -802,38 +802,7 @@ export default function AdminPage() {
           </TabsContent>
 
           <TabsContent value="ip-whitelist" className="space-y-4">
-            <div className="flex justify-end gap-2">
-              <Button
-                onClick={async () => {
-                  try {
-                    const response = await base44.functions.invoke('getCurrentIP', {});
-                    console.log('getCurrentIP response:', response);
-
-                    const data = response.data || response;
-                    const ipSourcesList = Object.entries(data.allIPSources || {})
-                      .map(([key, value]) => `  • ${key}: ${value}`)
-                      .join('\n');
-
-                    const message = [
-                      `ה-IP שזוהה: ${data.detectedIP}`,
-                      '',
-                      ipSourcesList ? `מקורות IP שנמצאו:\n${ipSourcesList}` : 'לא נמצאו מקורות IP',
-                      '',
-                      'ניתן להוסיף את ה-IP הזה לרשימת הכתובות המותרות למטה ↓'
-                    ].join('\n');
-
-                    alert(message);
-                  } catch (error) {
-                    console.error('getCurrentIP error:', error);
-                    alert('שגיאה בזיהוי IP: ' + error.message);
-                  }
-                }}
-                variant="outline"
-                className="gap-2"
-                style={{ borderColor: '#41B649', color: '#41B649' }}
-              >
-                🔍 בדוק את ה-IP שלי
-              </Button>
+            <div className="flex justify-end">
               <Button
                 onClick={() => {
                   setIpForm({ ip_address: "", description: "", is_active: true });
