@@ -1,8 +1,12 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { Base44Client } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
   try {
-    const base44 = createClientFromRequest(req);
+    // Initialize SDK with service role directly (no user auth needed)
+    const base44 = new Base44Client({
+      appId: Deno.env.get('BASE44_APP_ID'),
+      serviceRoleKey: Deno.env.get('BASE44_SERVICE_ROLE_KEY')
+    });
     
     // Try multiple headers to get real client IP
     const xForwardedFor = req.headers.get('x-forwarded-for');
@@ -26,8 +30,8 @@ Deno.serve(async (req) => {
     
     console.log(`[checkIPAccess] Determined Client IP: ${clientIP}`);
 
-    // Get all allowed IPs from database
-    const allowedIPs = await base44.asServiceRole.entities.AllowedIP.filter({ is_active: true });
+    // Get all allowed IPs from database using service role
+    const allowedIPs = await base44.entities.AllowedIP.filter({ is_active: true });
     console.log(`[checkIPAccess] Found ${allowedIPs.length} active allowed IPs`);
 
     // If no IPs are configured, BLOCK access (strict mode)
