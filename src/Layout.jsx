@@ -52,8 +52,6 @@ export default function Layout({ children, currentPageName }) {
         setIpBlocked(true);
         setClientIP(result.clientIP);
         setIpDebugInfo({
-          ipSource: result.ipSource,
-          ipSources: result.ipSources,
           reason: result.reason
         });
         return;
@@ -63,8 +61,12 @@ export default function Layout({ children, currentPageName }) {
       loadUser();
     } catch (error) {
       console.error("[Layout] IP Check Error:", error);
-      // Allow access on error to prevent admin lockout
-      loadUser();
+      // Block access on error for security
+      setIpBlocked(true);
+      setClientIP('error');
+      setIpDebugInfo({
+        reason: 'שגיאת מערכת - הגישה נחסמה'
+      });
     }
   };
 
@@ -130,24 +132,6 @@ export default function Layout({ children, currentPageName }) {
                 <p className="text-sm text-gray-600 mb-1">כתובת ה-IP שלך:</p>
                 <p className="font-mono font-bold text-lg" style={{ color: '#E52521' }}>{clientIP}</p>
               </div>
-              {ipDebugInfo?.ipSource && (
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">מקור זיהוי:</p>
-                  <p className="font-mono text-sm text-gray-800">{ipDebugInfo.ipSource}</p>
-                </div>
-              )}
-              {ipDebugInfo?.ipSources && Object.keys(ipDebugInfo.ipSources).length > 0 && (
-                <details className="text-sm">
-                  <summary className="text-gray-600 cursor-pointer hover:text-gray-800">מקורות IP נוספים שנמצאו</summary>
-                  <div className="mt-2 bg-white rounded p-2 space-y-1">
-                    {Object.entries(ipDebugInfo.ipSources).map(([key, value]) => (
-                      <div key={key} className="font-mono text-xs">
-                        <span className="text-gray-600">{key}:</span> <span className="text-gray-800">{value}</span>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              )}
               {ipDebugInfo?.reason && (
                 <div>
                   <p className="text-sm text-gray-600 mb-1">סיבה:</p>
