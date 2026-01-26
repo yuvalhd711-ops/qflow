@@ -40,7 +40,15 @@ export default function Layout({ children, currentPageName }) {
   const checkAccess = async () => {
     try {
       console.log("[Layout] Checking IP access...");
-      const { data } = await base44.functions.invoke('checkIPAccess', {});
+      
+      // Call function directly via fetch (no auth required)
+      const response = await fetch(`/api/apps/${base44.config.appId}/functions/checkIPAccess`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      
+      const data = await response.json();
       console.log("[Layout] IP check response:", data);
       
       if (!data.allowed) {
