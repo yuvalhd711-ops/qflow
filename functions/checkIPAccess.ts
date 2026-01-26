@@ -78,23 +78,27 @@ Deno.serve(async (req) => {
 
     // Get allowed IPs from database
     let allowedIPs = [];
+    let hasWhitelist = false;
+    
     try {
       allowedIPs = await base44.asServiceRole.entities.AllowedIP.filter({ is_active: true });
+      hasWhitelist = allowedIPs && allowedIPs.length > 0;
       console.log(`[checkIPAccess] Found ${allowedIPs.length} allowed IPs in whitelist`);
     } catch (dbError) {
       console.error("[checkIPAccess] ❌ DB Error:", dbError);
-      // On DB error, allow access to prevent lockout of admins
+      // If we can't check the whitelist, we must BLOCK for security
+      // Only allow if we can verify the whitelist is empty
       return Response.json({ 
-        allowed: true, 
+        allowed: false, 
         clientIP: clientIP || 'db-error',
         ipSource: ipSource,
         ipSources: ipSources,
-        reason: 'Database error - allowing access for safety'
+        reason: 'Database error - blocking for security'
       }, { status: 200 });
     }
     
     // If no whitelist configured, allow all access
-    if (!allowedIPs || allowedIPs.length === 0) {
+    if (!hasWhitelist) {
       console.log("[checkIPAccess] ℹ️ No whitelist configured - ALLOWING all");
       return Response.json({ 
         allowed: true, 
@@ -113,7 +117,7 @@ Deno.serve(async (req) => {
         clientIP: 'unable-to-determine',
         ipSource: null,
         ipSources: ipSources,
-        reason: 'IP detection failed - access denied'
+        reason: 'IP detection failed with active whitelist - access denied'
       }, { status: 200 });
     }
 
@@ -134,13 +138,13 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error("[checkIPAccess] ⚠️ UNEXPECTED ERROR:", error);
-    // On system error, allow access to prevent complete lockout
+    // On system error, BLOCK for security
     return Response.json({ 
-      allowed: true,
+      allowed: false,
       clientIP: 'system-error',
       ipSource: null,
       ipSources: {},
-      reason: 'System error - allowing access for safety',
+      reason: 'System error - blocking for security',
       error: error.message
     }, { status: 200 });
   }
