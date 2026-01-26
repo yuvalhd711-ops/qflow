@@ -40,12 +40,10 @@ export default function Layout({ children, currentPageName }) {
   const checkAccess = async () => {
     try {
       console.log("[Layout] Checking IP access...");
-      
-      // Call function using fetch with full URL
-      const hostname = window.location.hostname;
-      const appSubdomain = hostname.includes('.') ? hostname.split('.')[0] : '6900bd03618be1f06fb3d138';
-      const apiUrl = `https://base44.app/api/apps/${appSubdomain}/functions/checkIPAccess`;
-      
+
+      // Call function using direct relative path (same domain)
+      const apiUrl = '/api/functions/checkIPAccess';
+
       console.log("[Layout] Calling:", apiUrl);
       
       const response = await fetch(apiUrl, {
