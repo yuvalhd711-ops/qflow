@@ -41,8 +41,11 @@ export default function Layout({ children, currentPageName }) {
   const checkAccess = async () => {
     try {
       console.log("[Layout] Checking IP access...");
-      const { data } = await base44.functions.invoke('checkIPAccess', {});
-      console.log("[Layout] IP check response:", data);
+      const response = await base44.functions.invoke('checkIPAccess', {});
+      console.log("[Layout] Full response:", response);
+      
+      const data = response.data || response;
+      console.log("[Layout] IP check data:", data);
       
       if (!data.allowed) {
         console.log("[Layout] Access BLOCKED for IP:", data.clientIP);
@@ -56,6 +59,7 @@ export default function Layout({ children, currentPageName }) {
       loadUser();
     } catch (error) {
       console.error("[Layout] Error checking IP access:", error);
+      console.error("[Layout] Error details:", JSON.stringify(error, null, 2));
       // STRICT MODE: On error, show blocked screen for security
       console.log("[Layout] Blocking access due to error");
       setIpBlocked(true);
