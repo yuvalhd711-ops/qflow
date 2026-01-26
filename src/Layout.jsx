@@ -35,38 +35,9 @@ export default function Layout({ children, currentPageName }) {
   const [ipDebugInfo, setIpDebugInfo] = React.useState(null);
 
   React.useEffect(() => {
-    checkAccess();
+    // IP checking disabled - system allows all access
+    loadUser();
   }, []);
-
-  const checkAccess = async () => {
-    try {
-      console.log("[Layout] Checking IP access...");
-      const response = await base44.functions.invoke('checkIPAccess', {});
-      console.log("[Layout] Response:", response);
-      
-      const result = response?.data || response;
-      console.log("[Layout] Result:", result);
-      
-      if (result?.allowed === false) {
-        console.log("[Layout] BLOCKED - IP:", result.clientIP);
-        setIpBlocked(true);
-        setClientIP(result.clientIP);
-        setIpDebugInfo({
-          ipSource: result.ipSource,
-          ipSources: result.ipSources,
-          reason: result.reason
-        });
-        return;
-      }
-
-      console.log("[Layout] ALLOWED - IP:", result?.clientIP);
-      loadUser();
-    } catch (error) {
-      console.error("[Layout] IP Check Error:", error);
-      // Allow access on error to prevent admin lockout
-      loadUser();
-    }
-  };
 
   const loadUser = async () => {
     try {
