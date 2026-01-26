@@ -119,13 +119,16 @@ Deno.serve(async (req) => {
     // If no whitelist configured, allow all access
     if (!hasWhitelist) {
       console.log("[checkIPAccess] ℹ️ No whitelist configured - ALLOWING all");
-      return Response.json({ 
+      return new Response(JSON.stringify({ 
         allowed: true, 
         clientIP: clientIP,
         ipSource: ipSource,
         ipSources: ipSources,
         reason: 'No whitelist configured - all access allowed'
-      }, { status: 200 });
+      }), { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     // Check if IP is whitelisted - use exact string match
