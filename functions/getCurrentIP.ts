@@ -4,14 +4,7 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     
-    // Log ALL headers for debugging
-    console.log(`[getCurrentIP] ===== ALL REQUEST HEADERS =====`);
-    const allHeaders = {};
-    for (const [key, value] of req.headers.entries()) {
-      console.log(`  ${key}: ${value}`);
-      allHeaders[key] = value;
-    }
-    console.log(`[getCurrentIP] ================================`);
+    console.log(`[getCurrentIP] ===== Detecting IP =====`);
     
     // Try multiple headers to get real client IP
     const possibleHeaders = [
@@ -47,14 +40,34 @@ Deno.serve(async (req) => {
       }
     }
     
+    // Try to extract IP from base44-state token (Base44 platform specific)
+    if (!clientIP) {
+      const stateToken = req.headers.get('base44-state');
+      if (stateToken) {
+        try {
+          // Decode JWT without verification (it's already verified by platform)
+          const parts = stateToken.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1]));
+            if (payload.client_ip) {
+              clientIP = payload.client_ip;
+              ipSources['base44-state'] = clientIP;
+              console.log(`[getCurrentIP] Found IP in base44-state: ${clientIP}`);
+            }
+          }
+        } catch (e) {
+          console.warn('[getCurrentIP] Failed to parse base44-state:', e);
+        }
+      }
+    }
+    
     if (!clientIP) {
       clientIP = 'unable-to-determine';
     }
     
     return Response.json({ 
       detectedIP: clientIP,
-      allIPSources: ipSources,
-      allHeaders: allHeaders
+      allIPSources: ipSources
     }, { status: 200 });
 
   } catch (error) {
