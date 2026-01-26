@@ -67,11 +67,15 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error("[checkIPAccess] Error:", error);
+    console.error("[checkIPAccess] Error stack:", error.stack);
+    console.error("[checkIPAccess] Error details:", JSON.stringify(error, null, 2));
+    
     // In case of error, BLOCK access (fail secure, not fail open)
     return Response.json({ 
       allowed: false,
       reason: "Error checking IP - access denied for security",
       error: error.message,
+      errorStack: error.stack,
       clientIP: 'error'
     }, { status: 200 });
   }
