@@ -55,6 +55,7 @@ export default function Layout({ children, currentPageName }) {
     const checkIPAccess = async () => {
       // Skip check on blocked page itself
       if (location.pathname === '/blocked') {
+        setIpChecked(true);
         return;
       }
 
@@ -63,17 +64,20 @@ export default function Layout({ children, currentPageName }) {
         const result = await base44.functions.invoke('checkIPAccess', {});
         console.log("[Layout] IP check result:", result.data);
         
-        if (!result.data.allowed) {
-          console.log("[Layout] IP BLOCKED - redirecting to blocked page");
-          window.location.href = '/blocked?ip=' + encodeURIComponent(result.data.clientIP);
-        } else {
-          console.log("[Layout] IP ALLOWED - access granted");
-          setIpChecked(true);
+        // CRITICAL: Block if not allowed
+        if (result.data && result.data.allowed === false) {
+          console.log("[Layout] IP BLOCKED - redirecting immediately");
+          // Use replace to prevent back button
+          window.location.replace('/blocked?ip=' + encodeURIComponent(result.data.clientIP));
+          return; // Stop execution
         }
-      } catch (error) {
-        console.error("[Layout] IP check failed:", error);
-        // On error, allow access (fail open)
+        
+        console.log("[Layout] IP ALLOWED - access granted");
         setIpChecked(true);
+      } catch (error) {
+        console.error("[Layout] IP check failed with error:", error);
+        // On error, BLOCK access for security
+        window.location.replace('/blocked?ip=error');
       }
     };
     
