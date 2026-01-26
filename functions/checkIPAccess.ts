@@ -2,8 +2,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
   try {
+    console.log("[checkIPAccess] Function called");
+    
     // Initialize SDK with service role
     const base44 = createClientFromRequest(req);
+    console.log("[checkIPAccess] SDK initialized");
     
     // Try multiple headers to get real client IP
     const xForwardedFor = req.headers.get('x-forwarded-for');
