@@ -48,7 +48,12 @@ Deno.serve(async (req) => {
           // Decode JWT without verification (it's already verified by platform)
           const parts = stateToken.split('.');
           if (parts.length === 3) {
-            const payload = JSON.parse(atob(parts[1]));
+            // Use TextDecoder for proper base64 decoding in Deno
+            const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = new TextDecoder().decode(
+              Uint8Array.from(globalThis.atob(base64), c => c.charCodeAt(0))
+            );
+            const payload = JSON.parse(jsonPayload);
             if (payload.client_ip) {
               clientIP = payload.client_ip;
               ipSources['base44-state'] = clientIP;
@@ -56,7 +61,7 @@ Deno.serve(async (req) => {
             }
           }
         } catch (e) {
-          console.warn('[getCurrentIP] Failed to parse base44-state:', e);
+          console.warn('[getCurrentIP] Failed to parse base44-state:', e.message);
         }
       }
     }
@@ -64,6 +69,8 @@ Deno.serve(async (req) => {
     if (!clientIP) {
       clientIP = 'unable-to-determine';
     }
+    
+    console.log(`[getCurrentIP] Final detected IP: ${clientIP}`);
     
     return Response.json({ 
       detectedIP: clientIP,
