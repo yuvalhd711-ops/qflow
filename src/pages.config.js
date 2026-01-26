@@ -4,6 +4,7 @@ import Console from './pages/Console';
 import Display from './pages/Display';
 import Home from './pages/Home';
 import Kiosk from './pages/Kiosk';
+import Blocked from './pages/Blocked';
 import __Layout from './Layout.jsx';
 
 
@@ -14,6 +15,7 @@ export const PAGES = {
     "Display": Display,
     "Home": Home,
     "Kiosk": Kiosk,
+    "Blocked": Blocked,
 }
 
 export const pagesConfig = {
