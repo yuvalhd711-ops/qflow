@@ -4,27 +4,67 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     
+    // Log ALL headers for debugging
+    console.log(`[checkIPAccess] ===== ALL REQUEST HEADERS =====`);
+    for (const [key, value] of req.headers.entries()) {
+      console.log(`  ${key}: ${value}`);
+    }
+    console.log(`[checkIPAccess] ================================`);
+    
     // Try multiple headers to get real client IP
-    const xForwardedFor = req.headers.get('x-forwarded-for');
-    const xRealIp = req.headers.get('x-real-ip');
-    const cfConnectingIp = req.headers.get('cf-connecting-ip');
-    const remoteAddr = req.headers.get('remote-addr');
+    const possibleHeaders = [
+      'cf-connecting-ip',       // CloudFlare
+      'x-forwarded-for',        // Most common proxy header
+      'x-real-ip',              // Nginx proxy
+      'x-client-ip',            // Other proxies
+      'forwarded',              // RFC 7239
+      'true-client-ip',         // Akamai, CloudFlare Enterprise
+      'x-cluster-client-ip',    // Rackspace LB
+      'fastly-client-ip',       // Fastly CDN
+      'cf-pseudo-ipv4'          // CloudFlare IPv4 fallback
+    ];
     
-    // Log all headers for debugging
-    console.log(`[checkIPAccess] Headers:`);
-    console.log(`  x-forwarded-for: ${xForwardedFor}`);
-    console.log(`  x-real-ip: ${xRealIp}`);
-    console.log(`  cf-connecting-ip: ${cfConnectingIp}`);
-    console.log(`  remote-addr: ${remoteAddr}`);
+    let clientIP = null;
     
-    // Extract client IP (prioritize CloudFlare, then x-forwarded-for, then x-real-ip)
-    let clientIP = cfConnectingIp 
-      || (xForwardedFor ? xForwardedFor.split(',')[0].trim() : null)
-      || xRealIp
-      || remoteAddr
-      || 'unknown';
+    // Try each header in order
+    for (const header of possibleHeaders) {
+      const value = req.headers.get(header);
+      if (value) {
+        console.log(`[checkIPAccess] Found IP in ${header}: ${value}`);
+        if (header === 'x-forwarded-for') {
+          // Take first IP from comma-separated list
+          clientIP = value.split(',')[0].trim();
+        } else if (header === 'forwarded') {
+          // Parse RFC 7239 format
+          const match = value.match(/for=([^;,\s]+)/);
+          clientIP = match ? match[1].replace(/"/g, '') : null;
+        } else {
+          clientIP = value.trim();
+        }
+        
+        if (clientIP && clientIP !== 'unknown' && clientIP.length > 0) {
+          console.log(`[checkIPAccess] Selected client IP from ${header}: ${clientIP}`);
+          break;
+        }
+      }
+    }
     
-    console.log(`[checkIPAccess] Determined Client IP: ${clientIP}`);
+    // Fallback to connection info
+    if (!clientIP || clientIP === 'unknown') {
+      const connInfo = Deno.serveHttp ? (req as any).conn?.remoteAddr : null;
+      if (connInfo?.hostname) {
+        clientIP = connInfo.hostname;
+        console.log(`[checkIPAccess] Using connection remote addr: ${clientIP}`);
+      }
+    }
+    
+    // Final fallback
+    if (!clientIP || clientIP === 'unknown') {
+      clientIP = 'unable-to-determine';
+      console.log(`[checkIPAccess] WARNING: Unable to determine client IP!`);
+    }
+    
+    console.log(`[checkIPAccess] Final determined Client IP: ${clientIP}`);
 
     // Get all allowed IPs from database
     const allowedIPs = await base44.asServiceRole.entities.AllowedIP.filter({ is_active: true });
