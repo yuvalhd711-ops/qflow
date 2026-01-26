@@ -86,14 +86,13 @@ Deno.serve(async (req) => {
       console.log(`[checkIPAccess] Found ${allowedIPs.length} allowed IPs in whitelist`);
     } catch (dbError) {
       console.error("[checkIPAccess] ❌ DB Error:", dbError);
-      // If we can't check the whitelist, we must BLOCK for security
-      // Only allow if we can verify the whitelist is empty
+      // On DB error, allow access to prevent lockout of admins
       return Response.json({ 
-        allowed: false, 
+        allowed: true, 
         clientIP: clientIP || 'db-error',
         ipSource: ipSource,
         ipSources: ipSources,
-        reason: 'Database error - blocking for security'
+        reason: 'Database error - allowing access for safety'
       }, { status: 200 });
     }
     
@@ -138,13 +137,14 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error("[checkIPAccess] ⚠️ UNEXPECTED ERROR:", error);
-    // On system error, BLOCK for security
+    console.error("[checkIPAccess] Error stack:", error.stack);
+    // On system error, allow access to prevent complete lockout
     return Response.json({ 
-      allowed: false,
+      allowed: true,
       clientIP: 'system-error',
       ipSource: null,
       ipSources: {},
-      reason: 'System error - blocking for security',
+      reason: 'System error - allowing access for safety',
       error: error.message
     }, { status: 200 });
   }
