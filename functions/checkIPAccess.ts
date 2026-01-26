@@ -128,14 +128,17 @@ Deno.serve(async (req) => {
     console.log(`[checkIPAccess] IP ${clientIP}: ${isAllowed ? '✅ ALLOWED' : '❌ BLOCKED'}`);
     console.log(`[checkIPAccess] Whitelist: ${allowedIPs.map(ip => ip.ip_address).join(', ')}`);
 
-    return Response.json({ 
+    return new Response(JSON.stringify({ 
       allowed: isAllowed,
       clientIP: clientIP,
       ipSource: ipSource,
       ipSources: ipSources,
       reason: isAllowed ? 'IP whitelisted' : 'IP not in whitelist',
       whitelistCount: allowedIPs.length
-    }, { status: 200 });
+    }), { 
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
 
   } catch (error) {
     console.error("[checkIPAccess] ⚠️ UNEXPECTED ERROR:", error);
