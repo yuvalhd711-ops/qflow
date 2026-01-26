@@ -802,7 +802,22 @@ export default function AdminPage() {
           </TabsContent>
 
           <TabsContent value="ip-whitelist" className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <Button
+                onClick={async () => {
+                  try {
+                    const { data } = await base44.functions.invoke('getCurrentIP', {});
+                    alert(`ה-IP שזוהה:\n${data.detectedIP}\n\nמקורות אפשריים:\n${JSON.stringify(data.allIPSources, null, 2)}`);
+                  } catch (error) {
+                    alert('שגיאה בזיהוי IP: ' + error.message);
+                  }
+                }}
+                variant="outline"
+                className="gap-2"
+                style={{ borderColor: '#41B649', color: '#41B649' }}
+              >
+                🔍 בדוק את ה-IP שלי
+              </Button>
               <Button
                 onClick={() => {
                   setIpForm({ ip_address: "", description: "", is_active: true });
