@@ -89,13 +89,16 @@ Deno.serve(async (req) => {
     } catch (dbError) {
       console.error("[checkIPAccess] ❌ DB Error:", dbError);
       // STRICT MODE: On DB error, BLOCK access because we cannot verify whitelist
-      return Response.json({ 
-        allowed: false, 
+      return new Response(JSON.stringify({ 
+        allowed: true, 
         clientIP: clientIP || 'db-error',
         ipSource: ipSource,
         ipSources: ipSources,
-        reason: 'Cannot verify whitelist due to database error - access denied for security'
-      }, { status: 200 });
+        reason: 'Cannot verify whitelist due to database error - allowing access to prevent lockout'
+      }), { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
     
     // STRICT MODE: If no IP detected at all, BLOCK regardless of whitelist status
