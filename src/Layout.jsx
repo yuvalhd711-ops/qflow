@@ -41,8 +41,11 @@ export default function Layout({ children, currentPageName }) {
     try {
       console.log("[Layout] Checking IP access...");
       
+      // Get appId from current URL
+      const appId = window.location.hostname.split('.')[0];
+      
       // Call function directly via fetch (no auth required)
-      const response = await fetch(`/api/apps/${base44.config.appId}/functions/checkIPAccess`, {
+      const response = await fetch(`https://base44.app/api/apps/${appId}/functions/checkIPAccess`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
