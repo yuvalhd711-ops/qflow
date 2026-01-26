@@ -806,7 +806,10 @@ export default function AdminPage() {
               <Button
                 onClick={async () => {
                   try {
-                    const { data } = await base44.functions.invoke('getCurrentIP', {});
+                    const response = await base44.functions.invoke('getCurrentIP', {});
+                    console.log('getCurrentIP response:', response);
+
+                    const data = response.data || response;
                     const ipSourcesList = Object.entries(data.allIPSources || {})
                       .map(([key, value]) => `  • ${key}: ${value}`)
                       .join('\n');
@@ -821,6 +824,7 @@ export default function AdminPage() {
 
                     alert(message);
                   } catch (error) {
+                    console.error('getCurrentIP error:', error);
                     alert('שגיאה בזיהוי IP: ' + error.message);
                   }
                 }}
