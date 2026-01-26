@@ -30,7 +30,7 @@ import { Button } from "@/components/ui/button";
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
   const [user, setUser] = React.useState(null);
-  const [ipChecked, setIpChecked] = React.useState(false);
+  const [isBlocked, setIsBlocked] = React.useState(false);
 
   React.useEffect(() => {
     loadUser();
@@ -50,46 +50,56 @@ export default function Layout({ children, currentPageName }) {
     window.location.reload();
   };
 
-  // Check IP access immediately on mount
+  // Check IP access immediately and block rendering if not allowed
   React.useEffect(() => {
-    const checkIPAccess = async () => {
-      // Skip check on blocked page itself
-      if (location.pathname === '/blocked') {
-        return;
-      }
+    // Skip check on blocked page itself
+    if (location.pathname === '/blocked') {
+      return;
+    }
 
+    const checkIPAccess = async () => {
       try {
         console.log("[Layout] Checking IP access...");
         const result = await base44.functions.invoke('checkIPAccess', {});
         console.log("[Layout] IP check result:", result.data);
         
         if (!result.data.allowed) {
-          console.log("[Layout] IP BLOCKED - redirecting to blocked page");
-          window.location.href = '/blocked?ip=' + encodeURIComponent(result.data.clientIP);
+          console.log("[Layout] ❌ IP BLOCKED - Access Denied");
+          setIsBlocked(true);
+          // Force redirect after a short delay to ensure state updates
+          setTimeout(() => {
+            window.location.replace('/blocked?ip=' + encodeURIComponent(result.data.clientIP));
+          }, 100);
         } else {
-          console.log("[Layout] IP ALLOWED - access granted");
-          setIpChecked(true);
+          console.log("[Layout] ✓ IP ALLOWED - Access Granted");
+          setIsBlocked(false);
         }
       } catch (error) {
-        console.error("[Layout] IP check failed:", error);
-        // On error, allow access (fail open)
-        setIpChecked(true);
+        console.error("[Layout] IP check FAILED with error:", error);
+        // CRITICAL: On error, BLOCK access for security (fail secure, not fail open)
+        setIsBlocked(true);
+        setTimeout(() => {
+          window.location.replace('/blocked?ip=error');
+        }, 100);
       }
     };
     
     checkIPAccess();
   }, [location.pathname]);
 
-  // Don't render content until IP is checked
-  if (!ipChecked && location.pathname !== '/blocked') {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#E6F9EA' }}>
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 mx-auto mb-4" style={{ borderColor: '#41B649' }}></div>
-          <p className="text-xl text-gray-700">בודק גישה...</p>
+  // Show loading/checking screen while IP check is in progress
+  if (isBlocked || location.pathname === '/blocked') {
+    if (location.pathname !== '/blocked') {
+      return (
+        <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#E6F9EA' }}>
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-4 mx-auto mb-4" style={{ borderColor: '#E52521' }}></div>
+            <p className="text-xl font-bold" style={{ color: '#E52521' }}>גישה נדחתה</p>
+            <p className="text-gray-700 mt-2">מפנה לדף חסום...</p>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
   }
 
   const navigationItems = [
@@ -222,7 +232,7 @@ export default function Layout({ children, currentPageName }) {
               <div className="flex items-center gap-4">
                 <SidebarTrigger className="p-2 rounded-lg transition-colors duration-200" style={{ hover: { backgroundColor: '#E6F9EA' } }} />
                 <img 
-                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68dbe1252219022b9e191013/8866f21c5_SHuk_LOGO_HAYIR.png"
+                  src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68dbe1252279022b9e191013/8866f21c5_SHuk_LOGO_HAYIR.png"
                   alt="שוק העיר"
                   className="h-8 w-auto"
                 />
