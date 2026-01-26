@@ -30,54 +30,10 @@ import { Button } from "@/components/ui/button";
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
   const [user, setUser] = React.useState(null);
-  const [ipBlocked, setIpBlocked] = React.useState(false);
-  const [clientIP, setClientIP] = React.useState(null);
 
   React.useEffect(() => {
-    checkAccess();
+    loadUser();
   }, []);
-
-  const checkAccess = async () => {
-    try {
-      console.log("[Layout] Checking IP access...");
-
-      // Call function using direct relative path (same domain)
-      const apiUrl = '/api/functions/checkIPAccess';
-
-      console.log("[Layout] Calling:", apiUrl);
-      
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({})
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log("[Layout] IP check response:", data);
-      
-      if (!data.allowed) {
-        console.log("[Layout] Access BLOCKED for IP:", data.clientIP);
-        setIpBlocked(true);
-        setClientIP(data.clientIP);
-        return;
-      }
-      
-      console.log("[Layout] Access ALLOWED for IP:", data.clientIP);
-      setClientIP(data.clientIP);
-      loadUser();
-    } catch (error) {
-      console.error("[Layout] Error checking IP access:", error);
-      setIpBlocked(true);
-      setClientIP(error.message || "שגיאה בבדיקת IP");
-    }
-  };
 
   const loadUser = async () => {
     try {
