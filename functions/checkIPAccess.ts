@@ -2,19 +2,36 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
 Deno.serve(async (req) => {
   try {
-    // Initialize SDK with service role
     const base44 = createClientFromRequest(req);
     
-    // Try multiple headers to get real client IP
-    const xForwardedFor = req.headers.get('x-forwarded-for');
-    const xRealIp = req.headers.get('x-real-ip');
-    const cfConnectingIp = req.headers.get('cf-connecting-ip');
-    
-    // Extract client IP (prioritize CloudFlare, then x-forwarded-for, then x-real-ip)
-    let clientIP = cfConnectingIp 
-      || (xForwardedFor ? xForwardedFor.split(',')[0].trim() : null)
-      || xRealIp
-      || 'unknown';
+    let clientIP = 'unknown';
+
+    // Try to extract IP from base44-state JWT token
+    try {
+      const base44State = req.headers.get('base44-state');
+      if (base44State) {
+        // Decode JWT payload (split by . and decode the middle part)
+        const parts = base44State.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          clientIP = payload.client_ip || 'unknown';
+        }
+      }
+    } catch (e) {
+      console.log('[checkIPAccess] Failed to extract IP from base44-state:', e.message);
+    }
+
+    // Fallback to standard headers if needed
+    if (clientIP === 'unknown') {
+      const xForwardedFor = req.headers.get('x-forwarded-for');
+      const xRealIp = req.headers.get('x-real-ip');
+      const cfConnectingIp = req.headers.get('cf-connecting-ip');
+      
+      clientIP = cfConnectingIp 
+        || (xForwardedFor ? xForwardedFor.split(',')[0].trim() : null)
+        || xRealIp
+        || 'unknown';
+    }
     
     console.log(`[checkIPAccess] Client IP: ${clientIP}`);
 
