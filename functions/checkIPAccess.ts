@@ -81,18 +81,32 @@ Deno.serve(async (req) => {
     let hasWhitelist = false;
     
     try {
-      allowedIPs = await base44.asServiceRole.entities.AllowedIP.filter({ is_active: true });
-      hasWhitelist = allowedIPs && allowedIPs.length > 0;
-      console.log(`[checkIPAccess] Found ${allowedIPs.length} allowed IPs in whitelist`);
+      allowedIPs = await base44.asServiceRole.entities.AllowedIP.list();
+      const activeIPs = allowedIPs.filter(ip => ip.is_active === true);
+      hasWhitelist = activeIPs && activeIPs.length > 0;
+      console.log(`[checkIPAccess] Found ${activeIPs.length} active IPs in whitelist (${allowedIPs.length} total)`);
+      allowedIPs = activeIPs;
     } catch (dbError) {
       console.error("[checkIPAccess] ❌ DB Error:", dbError);
-      // On DB error, allow access to prevent lockout of admins
+      // STRICT MODE: On DB error, BLOCK access because we cannot verify whitelist
       return Response.json({ 
-        allowed: true, 
+        allowed: false, 
         clientIP: clientIP || 'db-error',
         ipSource: ipSource,
         ipSources: ipSources,
-        reason: 'Database error - allowing access for safety'
+        reason: 'Cannot verify whitelist due to database error - access denied for security'
+      }, { status: 200 });
+    }
+    
+    // STRICT MODE: If no IP detected at all, BLOCK regardless of whitelist status
+    if (!clientIP || clientIP === 'unknown' || clientIP === 'unable-to-determine') {
+      console.log("[checkIPAccess] ⚠️ No IP detected - BLOCKING for security");
+      return Response.json({ 
+        allowed: false, 
+        clientIP: 'unable-to-determine',
+        ipSource: null,
+        ipSources: ipSources,
+        reason: 'IP detection failed - access denied for security'
       }, { status: 200 });
     }
     
@@ -101,27 +115,15 @@ Deno.serve(async (req) => {
       console.log("[checkIPAccess] ℹ️ No whitelist configured - ALLOWING all");
       return Response.json({ 
         allowed: true, 
-        clientIP: clientIP || 'no-whitelist',
+        clientIP: clientIP,
         ipSource: ipSource,
         ipSources: ipSources,
         reason: 'No whitelist configured - all access allowed'
       }, { status: 200 });
     }
 
-    // If whitelist exists but no IP detected - BLOCK
-    if (!clientIP || clientIP === 'unknown') {
-      console.log("[checkIPAccess] ⚠️ Whitelist active but no IP detected - BLOCKING");
-      return Response.json({ 
-        allowed: false, 
-        clientIP: 'unable-to-determine',
-        ipSource: null,
-        ipSources: ipSources,
-        reason: 'IP detection failed with active whitelist - access denied'
-      }, { status: 200 });
-    }
-
-    // Check if IP is whitelisted
-    const isAllowed = allowedIPs.some(ip => ip.ip_address === clientIP);
+    // Check if IP is whitelisted - use exact string match
+    const isAllowed = allowedIPs.some(ip => String(ip.ip_address).trim() === String(clientIP).trim());
     
     console.log(`[checkIPAccess] IP ${clientIP}: ${isAllowed ? '✅ ALLOWED' : '❌ BLOCKED'}`);
     console.log(`[checkIPAccess] Whitelist: ${allowedIPs.map(ip => ip.ip_address).join(', ')}`);
@@ -138,13 +140,13 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("[checkIPAccess] ⚠️ UNEXPECTED ERROR:", error);
     console.error("[checkIPAccess] Error stack:", error.stack);
-    // On system error, allow access to prevent complete lockout
+    // STRICT MODE: On system error, BLOCK for security
     return Response.json({ 
-      allowed: true,
+      allowed: false,
       clientIP: 'system-error',
       ipSource: null,
       ipSources: {},
-      reason: 'System error - allowing access for safety',
+      reason: 'System error - access denied for security',
       error: error.message
     }, { status: 200 });
   }
