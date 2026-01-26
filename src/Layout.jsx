@@ -54,8 +54,9 @@ export default function Layout({ children, currentPageName }) {
       loadUser();
     } catch (error) {
       console.error("[Layout] Error checking IP access:", error);
-      setIpBlocked(true);
-      setClientIP("שגיאה בבדיקת IP");
+      // Don't block on error - allow access and just log the issue
+      console.log("[Layout] Allowing access despite error");
+      loadUser();
     }
   };
 
