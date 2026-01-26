@@ -53,10 +53,12 @@ Deno.serve(async (req) => {
     }
 
     console.log(`[checkIPAccess] IP ${clientIP} is BLOCKED ✗`);
+    console.log(`[checkIPAccess] Allowed IPs: ${allowedIPs.map(ip => ip.ip_address).join(', ')}`);
     return Response.json({ 
       allowed: false, 
       reason: "IP not in whitelist",
-      clientIP 
+      clientIP,
+      allowedIPs: allowedIPs.map(ip => ip.ip_address)
     }, { status: 200 });
 
   } catch (error) {
