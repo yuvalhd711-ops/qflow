@@ -47,7 +47,7 @@ export default function Layout({ children, currentPageName }) {
       const data = response.data || response;
       console.log("[Layout] IP check data:", data);
       
-      if (!data.allowed) {
+      if (data && data.allowed === false) {
         console.log("[Layout] Access BLOCKED for IP:", data.clientIP);
         setIpBlocked(true);
         setClientIP(data.clientIP);
@@ -55,19 +55,14 @@ export default function Layout({ children, currentPageName }) {
         return;
       }
 
-      console.log("[Layout] Access ALLOWED for IP:", data.clientIP);
+      console.log("[Layout] Access ALLOWED for IP:", data?.clientIP || 'unknown');
       loadUser();
     } catch (error) {
       console.error("[Layout] Error checking IP access:", error);
       console.error("[Layout] Error details:", JSON.stringify(error, null, 2));
-      // STRICT MODE: On error, show blocked screen for security
-      console.log("[Layout] Blocking access due to error");
-      setIpBlocked(true);
-      setClientIP('error');
-      setIpDebugInfo({
-        reason: 'Error checking IP access: ' + error.message,
-        ipSources: {}
-      });
+      // Allow access on error to prevent lockout - just log the issue
+      console.log("[Layout] Allowing access despite error to prevent lockout");
+      loadUser();
     }
   };
 
