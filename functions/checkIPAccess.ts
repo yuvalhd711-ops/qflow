@@ -17,12 +17,52 @@ Deno.serve(async (req) => {
       || remoteAddr
       || 'unknown';
     
-    console.log(`[checkIPAccess] Client IP: ${clientIP} - ALLOWING ACCESS (whitelist disabled)`);
+    console.log(`[checkIPAccess] Client IP: ${clientIP}`);
 
-    // Whitelist disabled - allow all access
+    // Get all allowed IPs from database
+    const allIPs = await base44.asServiceRole.entities.AllowedIP.list();
+    console.log(`[checkIPAccess] Total IPs in DB: ${allIPs.length}`);
+    
+    const allowedIPs = allIPs.filter(ip => {
+      const isActive = ip.data?.is_active !== false;
+      const ipAddress = ip.data?.ip_address;
+      console.log(`[checkIPAccess] IP: ${ipAddress}, Active: ${isActive}`);
+      return isActive && ipAddress;
+    });
+    
+    console.log(`[checkIPAccess] Active IPs: ${allowedIPs.length}`);
+
+    // If no IPs are configured, BLOCK access
+    if (allowedIPs.length === 0) {
+      console.log(`[checkIPAccess] No active IPs - BLOCKING`);
+      return Response.json({ 
+        allowed: false,
+        reason: "No IP whitelist configured",
+        clientIP 
+      }, { status: 200 });
+    }
+
+    // Check if client IP is in the allowed list
+    const isAllowed = allowedIPs.some(ip => {
+      const ipAddress = ip.data?.ip_address;
+      const match = ipAddress === clientIP;
+      console.log(`[checkIPAccess] ${ipAddress} === ${clientIP}? ${match}`);
+      return match;
+    });
+
+    if (isAllowed) {
+      console.log(`[checkIPAccess] ✓ ALLOWED`);
+      return Response.json({ 
+        allowed: true, 
+        reason: "IP in whitelist",
+        clientIP 
+      }, { status: 200 });
+    }
+
+    console.log(`[checkIPAccess] ✗ BLOCKED`);
     return Response.json({ 
-      allowed: true, 
-      reason: "IP whitelist disabled - all access allowed",
+      allowed: false, 
+      reason: "IP not in whitelist",
       clientIP 
     }, { status: 200 });
 
