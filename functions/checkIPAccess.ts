@@ -27,8 +27,9 @@ Deno.serve(async (req) => {
     console.log(`[checkIPAccess] Determined Client IP: ${clientIP}`);
 
     // Get all allowed IPs from database
-    const allowedIPs = await base44.asServiceRole.entities.AllowedIP.filter({ is_active: true });
+    const allowedIPs = await base44.asServiceRole.entities.AllowedIP.filter({ "data.is_active": true });
     console.log(`[checkIPAccess] Found ${allowedIPs.length} active allowed IPs`);
+    console.log(`[checkIPAccess] Allowed IPs:`, allowedIPs.map(ip => ip.data?.ip_address || ip.ip_address));
 
     // If no IPs are configured, BLOCK access (strict mode)
     if (allowedIPs.length === 0) {
