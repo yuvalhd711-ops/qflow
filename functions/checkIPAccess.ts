@@ -19,13 +19,30 @@ Deno.serve(async (req) => {
     
     console.log(`[checkIPAccess] Client IP: ${clientIP}`);
 
-    // ALWAYS ALLOW ACCESS - IP whitelist disabled
-    console.log(`[checkIPAccess] ✓ ALLOWED - IP whitelist is disabled`);
-    return Response.json({ 
-      allowed: true, 
-      reason: "IP whitelist disabled - all access allowed",
-      clientIP 
-    }, { status: 200 });
+    // Fetch allowed IPs from database
+    const allowedIPs = await base44.asServiceRole.entities.AllowedIP.list();
+    console.log(`[checkIPAccess] Found ${allowedIPs.length} allowed IPs in database`);
+
+    // Check if client IP is in the allowed list and is active
+    const matchingIP = allowedIPs.find(
+      record => record.ip_address === clientIP && record.is_active === true
+    );
+
+    if (matchingIP) {
+      console.log(`[checkIPAccess] ✓ ALLOWED - IP ${clientIP} found in whitelist`);
+      return Response.json({ 
+        allowed: true, 
+        reason: "IP address is whitelisted",
+        clientIP 
+      }, { status: 200 });
+    } else {
+      console.log(`[checkIPAccess] ✗ BLOCKED - IP ${clientIP} not in whitelist`);
+      return Response.json({ 
+        allowed: false,
+        reason: "IP address not in whitelist",
+        clientIP 
+      }, { status: 200 });
+    }
 
   } catch (error) {
     console.error("[checkIPAccess] Error:", error);
