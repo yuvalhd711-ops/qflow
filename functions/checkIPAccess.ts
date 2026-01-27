@@ -19,19 +19,21 @@ Deno.serve(async (req) => {
     
     console.log(`[checkIPAccess] Client IP: ${clientIP}`);
 
-    // Get all allowed IPs from database
-    const allIPs = await base44.asServiceRole.entities.AllowedIP.list();
+    // Get all allowed IPs from database using filter instead of list
+    const allIPs = await base44.asServiceRole.entities.AllowedIP.filter({});
     console.log(`[checkIPAccess] Total IPs in DB: ${allIPs.length}`);
+    console.log(`[checkIPAccess] Raw IPs:`, JSON.stringify(allIPs, null, 2));
     
     const allowedIPs = allIPs.filter(ip => {
       // Support both flat and nested data structures
       const isActive = (ip.is_active !== undefined) ? ip.is_active : (ip.data?.is_active !== false);
       const ipAddress = ip.ip_address || ip.data?.ip_address;
-      console.log(`[checkIPAccess] IP Record:`, { ipAddress, isActive, rawIP: ip });
+      console.log(`[checkIPAccess] IP Record - Address: ${ipAddress}, Active: ${isActive}`);
       return isActive && ipAddress;
     });
     
     console.log(`[checkIPAccess] Active IPs: ${allowedIPs.length}`);
+    console.log(`[checkIPAccess] Active IP Addresses:`, allowedIPs.map(ip => ip.ip_address || ip.data?.ip_address));
 
     // If no IPs are configured, BLOCK access
     if (allowedIPs.length === 0) {
@@ -47,7 +49,7 @@ Deno.serve(async (req) => {
     const isAllowed = allowedIPs.some(ip => {
       const ipAddress = ip.ip_address || ip.data?.ip_address;
       const match = ipAddress === clientIP;
-      console.log(`[checkIPAccess] ${ipAddress} === ${clientIP}? ${match}`);
+      console.log(`[checkIPAccess] Comparing: ${ipAddress} === ${clientIP}? ${match}`);
       return match;
     });
 
@@ -60,7 +62,7 @@ Deno.serve(async (req) => {
       }, { status: 200 });
     }
 
-    console.log(`[checkIPAccess] ✗ BLOCKED`);
+    console.log(`[checkIPAccess] ✗ BLOCKED - IP not found in whitelist`);
     return Response.json({ 
       allowed: false, 
       reason: "IP not in whitelist",
