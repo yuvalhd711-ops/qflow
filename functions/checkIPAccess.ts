@@ -19,8 +19,16 @@ Deno.serve(async (req) => {
     
     console.log(`[checkIPAccess] Client IP: ${clientIP}`);
 
-    // Get all allowed IPs from database using filter instead of list
-    const allIPs = await base44.asServiceRole.entities.AllowedIP.filter({});
+    // Get all allowed IPs from database - using list() which is more reliable
+    let allIPs = [];
+    try {
+      allIPs = await base44.asServiceRole.entities.AllowedIP.list();
+      console.log(`[checkIPAccess] Successfully fetched ${allIPs.length} IPs from DB`);
+    } catch (listError) {
+      console.error(`[checkIPAccess] Error fetching IPs:`, listError);
+      allIPs = [];
+    }
+    
     console.log(`[checkIPAccess] Total IPs in DB: ${allIPs.length}`);
     console.log(`[checkIPAccess] Raw IPs:`, JSON.stringify(allIPs, null, 2));
     
