@@ -24,9 +24,10 @@ Deno.serve(async (req) => {
     console.log(`[checkIPAccess] Total IPs in DB: ${allIPs.length}`);
     
     const allowedIPs = allIPs.filter(ip => {
-      const isActive = ip.data?.is_active !== false;
-      const ipAddress = ip.data?.ip_address;
-      console.log(`[checkIPAccess] IP: ${ipAddress}, Active: ${isActive}`);
+      // Support both flat and nested data structures
+      const isActive = (ip.is_active !== undefined) ? ip.is_active : (ip.data?.is_active !== false);
+      const ipAddress = ip.ip_address || ip.data?.ip_address;
+      console.log(`[checkIPAccess] IP Record:`, { ipAddress, isActive, rawIP: ip });
       return isActive && ipAddress;
     });
     
@@ -44,7 +45,7 @@ Deno.serve(async (req) => {
 
     // Check if client IP is in the allowed list
     const isAllowed = allowedIPs.some(ip => {
-      const ipAddress = ip.data?.ip_address;
+      const ipAddress = ip.ip_address || ip.data?.ip_address;
       const match = ipAddress === clientIP;
       console.log(`[checkIPAccess] ${ipAddress} === ${clientIP}? ${match}`);
       return match;
