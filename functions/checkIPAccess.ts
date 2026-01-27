@@ -41,7 +41,12 @@ Deno.serve(async (req) => {
     }
 
     // Check if client IP is in the allowed list
-    const isAllowed = allowedIPs.some(ip => ip.ip_address === clientIP);
+    // Handle both flat and nested data structures
+    const isAllowed = allowedIPs.some(ip => {
+      const ipAddress = ip.ip_address || ip.data?.ip_address;
+      console.log(`[checkIPAccess] Comparing: ${ipAddress} === ${clientIP}`);
+      return ipAddress === clientIP;
+    });
 
     if (isAllowed) {
       console.log(`[checkIPAccess] IP ${clientIP} is ALLOWED ✓`);
