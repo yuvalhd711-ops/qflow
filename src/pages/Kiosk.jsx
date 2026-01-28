@@ -366,60 +366,60 @@ export default function KioskPage() {
   };
 
   const createTicketWithSms = async () => {
-      if (!phoneNumber || phoneNumber.length < 9) {
-        alert("אנא הזן מספר טלפון תקין");
-        return;
-      }
+    if (!phoneNumber || phoneNumber.length < 9) {
+      alert("אנא הזן מספר טלפון תקין");
+      return;
+    }
 
-      if (isCreating) return; // Prevent double-clicks
-      setIsCreating(true);
-      setShowSmsModal(false);
-      setShowTicketCard(false); // Hide any previous ticket
+    if (isCreating) return;
+    setIsCreating(true);
+    setShowSmsModal(false);
+    setShowTicketCard(false);
 
-      try {
-        const { seq, createdTime } = await createNewTicket(phoneNumber, joinClub);
+    try {
+      const { seq, createdTime } = await createNewTicket(phoneNumber, joinClub);
 
-        console.log("[Kiosk] *** DISPLAYING AND PRINTING SEQ (SMS):", seq, "***");
+      console.log("[Kiosk] *** DISPLAYING AND PRINTING SEQ (SMS):", seq, "***");
 
-        // Send SMS in background (don't block UI)
-        base44.functions.invoke('sendSms', {
-          phoneNumber: phoneNumber,
-          queueName: queue.name,
-          ticketSeq: seq
-        }).then(() => {
-          console.log("[Kiosk] SMS sent successfully");
-        }).catch((smsError) => {
-          console.error("[Kiosk] Error sending SMS:", smsError);
-        });
+      // Send SMS in background (don't await - fire and forget)
+      base44.functions.invoke('sendSms', {
+        phoneNumber: phoneNumber,
+        queueName: queue.name,
+        ticketSeq: seq
+      }).then(() => {
+        console.log("[Kiosk] SMS sent successfully");
+      }).catch((smsError) => {
+        console.error("[Kiosk] Error sending SMS:", smsError);
+      });
 
-        // Update display state with the seq number directly
-        setDisplayedTicketSeq(seq);
-        setDisplayedTicketTime(createdTime);
-        setShowTicketCard(true);
-        setShowSmsConfirmation(true);
+      // Update display state
+      setDisplayedTicketSeq(seq);
+      setDisplayedTicketTime(createdTime);
+      setShowTicketCard(true);
+      setShowSmsConfirmation(true);
 
-        // Print immediately with the seq number
-        setTimeout(() => {
-          printTicketNow(seq, createdTime);
-        }, 300);
+      // Print ticket
+      setTimeout(() => {
+        printTicketNow(seq, createdTime);
+      }, 300);
 
-        // Hide SMS confirmation after 4 seconds
-        setTimeout(() => {
-          setShowSmsConfirmation(false);
-        }, 4000);
+      // Hide SMS confirmation after 4 seconds
+      setTimeout(() => {
+        setShowSmsConfirmation(false);
+      }, 4000);
 
-        // Hide ticket card after 4 seconds
-        setTimeout(() => {
-          setShowTicketCard(false);
-          setDisplayedTicketSeq(null);
-        }, 4000);
-      } catch (error) {
-        console.error("Error creating ticket:", error);
-        alert("שגיאה ביצירת כרטיס. אנא נסה שוב.");
-      } finally {
-        setIsCreating(false);
-      }
-    };
+      // Hide ticket card after 4 seconds
+      setTimeout(() => {
+        setShowTicketCard(false);
+        setDisplayedTicketSeq(null);
+      }, 4000);
+    } catch (error) {
+      console.error("Error creating ticket:", error);
+      alert("שגיאה ביצירת כרטיס. אנא נסה שוב.");
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   const selectDepartment = async (deptName) => {
     try {
