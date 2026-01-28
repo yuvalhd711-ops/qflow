@@ -381,18 +381,16 @@ export default function KioskPage() {
 
         console.log("[Kiosk] *** DISPLAYING AND PRINTING SEQ (SMS):", seq, "***");
 
-        // Send SMS
-        try {
-          await base44.functions.invoke('sendSms', {
-            phoneNumber: phoneNumber,
-            queueName: queue.name,
-            ticketSeq: seq
-          });
+        // Send SMS in background (don't block UI)
+        base44.functions.invoke('sendSms', {
+          phoneNumber: phoneNumber,
+          queueName: queue.name,
+          ticketSeq: seq
+        }).then(() => {
           console.log("[Kiosk] SMS sent successfully");
-        } catch (smsError) {
+        }).catch((smsError) => {
           console.error("[Kiosk] Error sending SMS:", smsError);
-          // Continue even if SMS fails - ticket is already created
-        }
+        });
 
         // Update display state with the seq number directly
         setDisplayedTicketSeq(seq);
