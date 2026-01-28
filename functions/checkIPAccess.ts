@@ -23,6 +23,16 @@ Deno.serve(async (req) => {
     const allowedIPs = await base44.asServiceRole.entities.AllowedIP.list();
     console.log(`[checkIPAccess] Found ${allowedIPs.length} allowed IPs in database`);
 
+    // If no IPs in whitelist, block all access for security
+    if (allowedIPs.length === 0) {
+      console.log(`[checkIPAccess] ✗ BLOCKED - No IPs in whitelist, blocking all access`);
+      return Response.json({ 
+        allowed: false,
+        reason: "No IPs in whitelist - all access blocked",
+        clientIP 
+      }, { status: 200 });
+    }
+
     // Check if client IP is in the allowed list and is active
     const matchingIP = allowedIPs.find(
       record => record.ip_address === clientIP && record.is_active === true
