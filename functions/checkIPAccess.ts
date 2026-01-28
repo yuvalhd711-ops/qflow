@@ -41,10 +41,11 @@ Deno.serve(async (req) => {
     
     // Log each record in detail
     allowedIPs.forEach((record, idx) => {
+      const data = record.data || record;
       console.log(`[7.${idx}] Record ${idx + 1}:`);
-      console.log(`  - ip_address: "${record.ip_address}" (type: ${typeof record.ip_address})`);
-      console.log(`  - is_active: ${record.is_active} (type: ${typeof record.is_active})`);
-      console.log(`  - description: "${record.description || 'N/A'}"`);
+      console.log(`  - ip_address: "${data.ip_address}" (type: ${typeof data.ip_address})`);
+      console.log(`  - is_active: ${data.is_active} (type: ${typeof data.is_active})`);
+      console.log(`  - description: "${data.description || 'N/A'}"`);
       console.log(`  - Full record:`, JSON.stringify(record));
     });
 
@@ -62,20 +63,23 @@ Deno.serve(async (req) => {
     // Check if client IP is in the allowed list and is active
     console.log(`[9] Starting IP matching...`);
     const matchingIP = allowedIPs.find((record, idx) => {
+      // Extract data (handle both direct fields and data wrapper)
+      const data = record.data || record;
+      
       // Clean record IP
-      const recordIP = String(record.ip_address || '').trim();
+      const recordIP = String(data.ip_address || '').trim();
       
       // Check is_active (handle multiple formats)
-      const isActive = record.is_active === true 
-        || record.is_active === 1 
-        || record.is_active === "true"
-        || record.is_active === "1";
+      const isActive = data.is_active === true 
+        || data.is_active === 1 
+        || data.is_active === "true"
+        || data.is_active === "1";
       
       console.log(`[9.${idx}] Comparing:`);
       console.log(`  - Client: "${clientIP}"`);
       console.log(`  - Record: "${recordIP}"`);
       console.log(`  - Match: ${recordIP === clientIP}`);
-      console.log(`  - Active: ${isActive} (raw: ${record.is_active})`);
+      console.log(`  - Active: ${isActive} (raw: ${data.is_active})`);
       
       const matches = recordIP === clientIP && isActive;
       console.log(`  - Result: ${matches ? "✓ MATCH" : "✗ NO MATCH"}`);
