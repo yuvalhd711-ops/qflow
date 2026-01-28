@@ -19,9 +19,10 @@ Deno.serve(async (req) => {
     
     console.log(`[checkIPAccess] Client IP: ${clientIP}`);
 
-    // Fetch allowed IPs from database
-    const allowedIPs = await base44.asServiceRole.entities.AllowedIP.list();
+    // Fetch allowed IPs from database using service role to bypass RLS
+    const allowedIPs = await base44.asServiceRole.entities.AllowedIP.filter({});
     console.log(`[checkIPAccess] Found ${allowedIPs.length} allowed IPs in database`);
+    console.log(`[checkIPAccess] Allowed IPs:`, allowedIPs.map(ip => ip.ip_address).join(', '));
 
     // If no IPs in whitelist, block all access for security
     if (allowedIPs.length === 0) {
